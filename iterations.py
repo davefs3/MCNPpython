@@ -43,7 +43,7 @@ def clear_initialize():
     sheet = utilities.sheet_from_name(wb, 'Iterations')
     meas_sheet = utilities.sheet_from_name(wb, 'Measurements')
     config_sheet = utilities.sheet_from_name(wb, 'Current CFG')
-    
+
     clear_init(wb, sheet, config_sheet, meas_sheet)
 
 
@@ -54,18 +54,18 @@ class MeasurementEnergy:
         self.uncertainties = []
         self.add_measurement(efficiency, independent_uncertainty)
         self.correlated_uncertainty = correlated_uncertainty / 100.0
-        
+
     def efficiency(self):
         efficiencies = np.array(self.efficiencies)
         uncertainties = np.array(self.uncertainties) * efficiencies /100.0
-        
+
         weighted_average = np.sum(efficiencies/uncertainties**2) / np.sum(1.0 / uncertainties**2)
         uncertainty = np.sqrt(1.0 / np.sum(1.0/uncertainties**2)) / weighted_average
         stdev = np.std(efficiencies) / weighted_average
         uncertainty = np.sqrt(uncertainty**2 + self.correlated_uncertainty**2 + stdev**2) * 100.0
-                              
+
         return weighted_average, uncertainty
-        
+
     def add_measurement(self, efficiency, independent_uncertainty):
         self.efficiencies.append(efficiency)
         self.uncertainties.append(independent_uncertainty)
@@ -84,7 +84,7 @@ class Measurement:
                                'WE':13.8,
                                'RELEFF':1332}
 
-        
+
     def add_energy(self, energy, efficiency, independent_uncertainty, correlated_uncertainty):
         if energy in self.energies:
             self.energies[energy].add_measurement(efficiency, independent_uncertainty)
@@ -102,19 +102,19 @@ class Measurement:
                 eff, unc = measurement_energy.efficiency()
                 table.append([self.geometry, energy, eff, unc])
         return table, low_energy_indicies
-       
+
 
 def clear_init(wb, sheet, config_sheet, meas_sheet):
 
-    low_energy_validation = utilities.low_energy_validation(wb)    
+    low_energy_validation = utilities.low_energy_validation(wb)
     experiment = Iteration.from_config_sheet(config_sheet, os.path.dirname(wb.fullname), low_energy_validation)
-    
+
     # over ride the values for doing the characterization
 #    if sheet.name == 'Characterize':
 #        experiment.defaulthist = 100000
 #        experiment.maxhist = 100000000
 #        experiment.queue = 'bravo'
-    
+
     sheet.range((9, 16)).value = 0
     sheet.range((10, 16)).value = 0
     sheet.range('O11:Q11').clear()
@@ -125,7 +125,7 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
     sheet.range('B16').value = 'ENERGY'
     sheet.range('C16').value = 'EFFICIENCY'
     sheet.range('D16').value = '% SIGMA'
-    
+
     sheet.range((16, 1), (16, 100)).api.Borders(9).LineStyle = 1
     sheet.range((16, 1), (16, 100)).api.Borders(9).Weight = 2
 
@@ -133,17 +133,17 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
     start_column = 7
     end_column = start_column + 27
     end_row = meas_sheet.range('G' + str(sheet.cells.last_cell.row)).end('up').row
-    
+
     meas_range = meas_sheet.range((start_row, start_column), (end_row, end_column))
-    
+
     table = []
     first_row = 17
     line_end = 100
-    
+
     measurements = {}
-    
+
     measurement_order = ['0D', '45D', '90D', '135D', 'DC', 'DF', 'WE', 'FP_1', 'RELEFF']
-    
+
     for row in meas_range.rows:
         # Extract the geometry and remove trailing digits
         geometry = row[0].value.split('_')[-1].rstrip('1234567890')
@@ -157,7 +157,7 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
         other_unc = row[27].value
         independent_uncertainty = np.sqrt(peak_unc**2 + other_unc**2)
         correlated_uncertainty = source_unc
-        
+
         # convert to relative efficiency
         if geometry == 'DR':
             geometry = 'RELEFF'
@@ -172,7 +172,7 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
         else:
             measurements[geometry] = Measurement(geometry)
             measurements[geometry].add_energy(energy, efficiency, independent_uncertainty, correlated_uncertainty)
-            
+
     table = []
     for geometry in measurement_order:
         if geometry in measurements:
@@ -180,11 +180,11 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
             if not low_energy_validation:
                 for index in low_energy_indicies:
                     sheet.range((first_row + len(table) + index, 1), (first_row + len(table) + index, 4)).api.Interior.ColorIndex = 20
-                    
+
             table += geometry_table
             sheet.range((first_row + len(table), 1), (first_row + len(table), line_end)).api.Borders(8).LineStyle = 1
             sheet.range((first_row + len(table), 1), (first_row + len(table), line_end)).api.Borders(8).Weight = 2
-        
+
     sheet.range((first_row + len(table), 1), (first_row + len(table), line_end)).api.Borders(8).LineStyle = 1
     sheet.range((first_row + len(table), 1), (first_row + len(table), line_end)).api.Borders(8).Weight = 2
 
@@ -201,21 +201,20 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
     table.append(['~queue', experiment.queue,'',''])
     table.append(['~electrontrack', experiment.electrontrack,'',''])
     table.append(['#Start', '','', ''])
-        
+
     for key, value in experiment.detector.dimensions.items():
         table.append([key, str(value),'',''])
-        
+
     table.append(['#End', '','',''])
-                
+
     sheet.range('A17').value = table
-    
+
 
 if __name__ == '__main__':
     # Expects the Excel file next to this source file, adjust accordingly.
-    xw.Book('SN#####_v5_0_0.xlsm').set_mock_caller()
+    xw.Book('SNB20231_v5_1.xlsm').set_mock_caller()
     #clear_initialize()
     main()
-  
-    
-        
-        
+
+
+

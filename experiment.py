@@ -15,9 +15,9 @@ import shutil
 import tkinter as tk
 from tkinter import ttk
 import subprocess
-from sources import ZeroD, NinetyD, OneThirtyFiveD, DC, DF, DR, FortyFiveD, PointSource
+from sources import ZeroD, NinetyD, OneThirtyFiveD, DC, DF, DR, FortyFiveD, PointSource, WE
 import isocs_utility_functions as utilities
-from detector import AegisBEGe, AegisCoax, Generic
+from detector import AegisBEGe, AegisCoax, Generic, GCW
 import physpy.MCNP as mcnp
 
 class Experiment:
@@ -38,7 +38,7 @@ class Experiment:
         folder_name : String
             Path to the folder that contains all files used for the characterization.
         simtype : String, optional
-            The simulation type, currently only full is supported, legacy tcl script 
+            The simulation type, currently only full is supported, legacy tcl script
             supported bni as well. The default is 'full'.
         errlimit : float, optional
             The relative uncertainty limit for convergence in MCNP. The default is 0.01.
@@ -90,7 +90,7 @@ class Experiment:
         self.max_submitted = max_submitted
         self.max_lost_particles = max_lost_particles
         self.low_energy_validation = low_energy_validation
-        
+
     def write_config_page(self, sheet):
         """
         This method writes the experiment parameters to the config sheet
@@ -117,15 +117,15 @@ class Experiment:
              ['~queue', self.queue,'','','',''],
              ['~electrontrack', self.electrontrack,'','','',''],
              ['#Start', '','', 'Low Limit', 'High Limit', 'Free']]
-        
+
         for key, value in self.detector.dimensions.items():
             table.append([key, str(value[0]),str(value[1]),'','',''])
-        
+
         table.append(['#End', '','','','',''])
-                
+
         sheet.range('A1').value = table
         utilities.set_low_energy_validation(sheet.book, self.detector.low_energy_validation)
-    
+
     @classmethod
     def extract_from_config_sheet(cls, config_sheet):
         """
@@ -150,8 +150,8 @@ class Experiment:
         folder_name : String
             Path to the folder that contains all files used for the characterization.
         simtype : String
-            The simulation type, currently only full is supported, legacy tcl script 
-            supported bni as well. 
+            The simulation type, currently only full is supported, legacy tcl script
+            supported bni as well.
         errlimit : float
             The relative uncertainty limit for convergence in MCNP.
         defaulthist : integer
@@ -208,7 +208,7 @@ class Experiment:
                 customer = row[1].value if row[1].value is not None else ''
             elif row[0].value == '~ordernumber':
                 ordernumber = row[1].options(numbers=lambda x: str(int(x))).value
-                
+
         if model == None:
             raise ValueError('modelnumber keyword is missing')
         if serialnumber == None:
@@ -223,7 +223,7 @@ class Experiment:
             raise ValueError('maxhist keyword is missing')
         if queue == None:
             raise ValueError('queue keyword is missing')
-        
+
         if model.lower() == 'aegis-bege5030':
             detector = AegisBEGe(serialnumber)
         elif model.lower() == 'aegis-gc40':
@@ -232,14 +232,16 @@ class Experiment:
             detector = AegisCoax(serialnumber, 'GX')
         elif model.lower() == 'generic':
             detector = Generic(serialnumber)
+        elif model.lower().startswith('gcw'):
+            detector = GCW(serialnumber, model)
         else:
             raise ValueError(f'Unknown model: {model}')
 
         table = config_sheet.range((start_row + 1, 1), (end_row - 1, 2))
         for row in table.rows:
             detector.dimensions[row[0].value] = row[1].value
-        
-        return detector, ordernumber, simtype, errlimit, defaulthist, maxhist, queue, coorname, electrontrack, debug, fulldetector, customer 
+
+        return detector, ordernumber, simtype, errlimit, defaulthist, maxhist, queue, coorname, electrontrack, debug, fulldetector, customer
 
 
 class Iteration(Experiment):
@@ -247,7 +249,7 @@ class Iteration(Experiment):
                  queue='alpha', coorname=None, electrontrack=False, debug=False,
                  full_detector=True, customer='', low_energy_validation=True):
         """
-        Class to handle iterations. 
+        Class to handle iterations.
 
         Parameters
         ----------
@@ -258,7 +260,7 @@ class Iteration(Experiment):
         folder_name : String
             Path to the folder that contains all files used for the characterization.
         simtype : String, optional
-            The simulation type, currently only full is supported, legacy tcl script 
+            The simulation type, currently only full is supported, legacy tcl script
             supported bni as well. The default is 'full'.
         errlimit : float, optional
             The relative uncertainty limit for convergence in MCNP. The default is 0.01.
@@ -290,7 +292,7 @@ class Iteration(Experiment):
              defaulthist, maxhist, queue, coorname, electrontrack, debug,
              full_detector, customer, priority=1, max_submitted=50,
              max_lost_particles=10, low_energy_validation=low_energy_validation)
-        
+
     @classmethod
     def from_config_sheet(cls, config_sheet, folder_name, low_energy_validation):
         """
@@ -311,18 +313,18 @@ class Iteration(Experiment):
             An instance of the Iterations class with the parameters fromt the configuration sheet.
 
         """
-        
+
         detector, ordernumber, simtype, errlimit, defaulthist, max_hist, queue, coorname, electrontrack, debug, fulldetector, customer = Experiment.extract_from_config_sheet(config_sheet)
-        
+
         return cls(detector, ordernumber, folder_name, simtype=simtype, errlimit=errlimit, defaulthist=defaulthist, maxhist=max_hist,
                  queue=queue, coorname=coorname, electrontrack=electrontrack, debug=debug,
                  full_detector=fulldetector, customer=customer, low_energy_validation=low_energy_validation)
-    
+
     @classmethod
     def default_parameters(cls, serial_number, model, init_sheet, standard_sheet, folder_name, order_number):
         """
         Creates an instance of the Iteration class with the default parameters.
-        
+
 
         Parameters
         ----------
@@ -351,7 +353,7 @@ class Iteration(Experiment):
             An instance of the Iterations class with default parameters.
 
         """
-        simtype = 'bni'
+        simtype = 'full'
         errlimit = 0.01
         defaulthist = 35000
         maxhist = 1000000
@@ -361,19 +363,17 @@ class Iteration(Experiment):
         debug = False
         full_detector = True
         customer = ''
-        
+
         if model.lower() == 'aegis-bege5030':
             detector = AegisBEGe(serial_number)
-            simtype = 'full'
         elif model.lower() == 'aegis-gc40':
             detector = AegisCoax(serial_number, 'GC')
-            simtype = 'full'
         elif model.lower() == 'aegis-gx40':
             detector = AegisCoax(serial_number, 'GX')
-            simtype = 'full'
         elif model.lower() == 'generic':
             detector = Generic(serial_number)
-            simtype = 'full'
+        elif model.lower().startswith('gcw'):
+            detector = GCW(serial_number, model)
         else:
             raise ValueError(f'Unknown model: {model}')
         detector.initial_detector_dimensions(init_sheet, standard_sheet)
@@ -399,14 +399,14 @@ class Iteration(Experiment):
         None.
 
         """
-        
+
         if not self.detector.validate_model(standard_sheet):
             return
-        
+
         if utilities.mcnp_running(iteration_sheet) == 1:
             ctypes.windll.user32.MessageBoxW(0, f'MCNP is already running for this detector', 'MCNP running', 0)
             return
-        
+
         start_time = datetime.datetime.now()
         start_row = utilities.find_tag_in_column('SPECTRUM', iteration_sheet, 'A') + 1
         end_row = utilities.find_tag_in_column('PARAMETER', iteration_sheet, 'A') - 1
@@ -416,7 +416,7 @@ class Iteration(Experiment):
         queued = []
         completed = {}
         sample_created = set()
-        
+
         # create the sources that is used for the iteration
         for geometry, energy in zip(geometry_range, energy_range):
             temp = None
@@ -434,9 +434,11 @@ class Iteration(Experiment):
                 temp = DR(float(energy.value), counter, self.defaulthist)
             elif '45D' == geometry.value:
                 temp = FortyFiveD(float(energy.value), counter, self.defaulthist, self.detector.dimensions["sou_pt_arm"], self.detector.dimensions["sou_pt_pivot"])
-            
+            elif 'WE' == geometry.value:
+                temp = WE(float(energy.value), counter, self.defaulthist, self.detector.dimensions['ec_well_depth'])
+
             if temp is not None:
-                queued.append(temp) 
+                queued.append(temp)
                 counter += 1
 
             # Write the example MCNP file=
@@ -455,25 +457,25 @@ class Iteration(Experiment):
             inque_folder = r'P:\ISOCSProduction\ManagerB\InQueue'
             outque_folder = r'P:\ISOCSProduction\ManagerB\OutQueue'
         else:
-            ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.interation_queue}', 'Unknown queue', 0)            
+            ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.interation_queue}', 'Unknown queue', 0)
             return
-        
+
         name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_iter.out')
         log_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_iter.log')
         with open(name, 'w') as outfile, open(log_name, 'w') as logfile:
-        
+
             if self.debug:
-                if not os.path.isdir('debug'):
-                    os.mkdir('debug')
-            
+                if not os.path.isdir(os.path.join(self.folder_name, 'debug')):
+                    os.mkdir(os.path.join(self.folder_name, 'debug'))
+
             # Set the flag indicating that MCNP is running.
             utilities.set_mcnp_running(iteration_sheet, 1)
-            
+
             # Launch the Tk windows that handles submitting and recieving MCNP files
             logfile.write(f'{datetime.datetime.now()} Starting Iteration\n')
             app = Window(self, queued, completed,
                          inque_folder, outque_folder, outfile, logfile)
-            
+
             app.after(100, app.process_mcnp)
             app.mainloop()
             app.destroy()
@@ -481,15 +483,15 @@ class Iteration(Experiment):
             # Clear the flag indicating that MCNP is running.
             utilities.set_mcnp_running(iteration_sheet, 0)
             logfile.write(f'{datetime.datetime.now()} Iteration finished\n')
-            
+
             if app.aborted:
                 return
-            
+
             if app.lost_particles:
-                ctypes.windll.user32.MessageBoxW(0, f'Lost particles, check the inputs', 'Lost particles', 0)            
+                ctypes.windll.user32.MessageBoxW(0, f'Lost particles, check the inputs', 'Lost particles', 0)
                 return
-                
-            
+
+
             # Compare the modeled and measured efficiencies
             outfile.seek(0)
             outfile.truncate()
@@ -502,7 +504,7 @@ class Iteration(Experiment):
             one_sigma = 0
             two_sigma = 0
             valid_measurements = 0
-            
+
             experiments = collections.OrderedDict()
             energy_counter = 1
             for counter in sorted(completed):
@@ -537,7 +539,7 @@ class Iteration(Experiment):
                 elif np.abs(eff_ratio - 1.0) > unc_ratio:
                     one_sigma += 1
                     res_range[counter, 0].api.Interior.ColorIndex = 6
-                    valid_measurements += 1                
+                    valid_measurements += 1
                 efficiencies[counter] = eff_ratio
 
         experiments[res] = energy_counter
@@ -582,11 +584,11 @@ class Iteration(Experiment):
 
         summary_range = iteration_sheet.range((start_row - 3, column), (start_row - 1, column + 1))
         summary_range[0, 0].value = np.mean(efficiencies)
-        summary_range[1, 0].value = np.std(efficiencies)                 
+        summary_range[1, 0].value = np.std(efficiencies)
         summary_range[2, 0].value = f'Iteration {iteration}:'
         summary_range[2, 1].value = f'{int((end_time - start_time).total_seconds())}'
         summary_range[0, 1].value = f'{np.abs(np.mean(efficiencies) - 1.0)*np.std(efficiencies)}'
-        
+
         deviations_range = iteration_sheet.range((9, 15), (11, 17))
         one_sigma_ratio = one_sigma / valid_measurements
         two_sigma_ratio = two_sigma / valid_measurements
@@ -601,9 +603,9 @@ class Iteration(Experiment):
         else:
             deviations_range[2, 0].value = 'Not validated'
             deviations_range[2, :].api.Interior.ColorIndex = 3
-        
-        last_row = iteration_sheet.range('A' + str(iteration_sheet.cells.last_cell.row)).end('up').row 
-        
+
+        last_row = iteration_sheet.range('A' + str(iteration_sheet.cells.last_cell.row)).end('up').row
+
         key_range = iteration_sheet.range((end_row + 1, 1), (last_row, 1))
         if iteration == 1:
             previous = 2
@@ -611,7 +613,7 @@ class Iteration(Experiment):
             previous = column - 2
         previous_range = iteration_sheet.range((end_row + 1, previous), (last_row, previous))
         current_range = iteration_sheet.range((end_row + 1, column), (last_row, column))
-        
+
         for key, previous, current in zip(key_range, previous_range, current_range):
             if key.value == 'PARAMETER':
                 current.value = 'PARAMETER'
@@ -624,17 +626,17 @@ class Iteration(Experiment):
 
             elif key.value.startswith('#'):
                 current.value = ''
-                
+
             else:
                 current.value = self.detector.dimensions[key.value]
-                
+
             if previous.value != current.value:
                 current.api.Interior.ColorIndex = 4
 
         table = [['MCNPEffic', 'Error']]
         for counter in sorted(completed):
             table.append([float(completed[counter].eff), float(completed[counter].unc)])
-        
+
         iteration_sheet.range(last_row + 5, column).value = table
 
 
@@ -643,7 +645,7 @@ class Characterization(Experiment):
                  queue='alpha', coorname=None, electrontrack=False, debug=False,
                  full_detector=True, customer='', low_energy_validation=True):
         """
-        
+
 
         Parameters
         ----------
@@ -654,7 +656,7 @@ class Characterization(Experiment):
         folder_name : String
             Path to the folder that contains all files used for the characterization.
         simtype : String, optional
-            The simulation type, currently only full is supported, legacy tcl script 
+            The simulation type, currently only full is supported, legacy tcl script
             supported bni as well. The default is 'full'.
         errlimit : float, optional
             The relative uncertainty limit for convergence in MCNP. The default is 0.01.
@@ -688,7 +690,7 @@ class Characterization(Experiment):
         self.parfile_energies = [10, 12, 16, 22, 32, 45, 60, 80, 100, 122, 186,
                                  300, 500, 662, 898, 1173, 1332, 1836, 3000,
                                  7000]
-        
+
 
     @classmethod
     def from_config_sheet(cls, config_sheet, char_sheet, folder_name, low_energy_validation):
@@ -712,8 +714,8 @@ class Characterization(Experiment):
         """
 
         detector, ordernumber, simtype, errlimit, defaulthist, maxhist, queue, coorname, electrontrack, debug, fulldetector, customer = Experiment.extract_from_config_sheet(config_sheet)
-        
-        # Read the characterization specific values from the 
+
+        # Read the characterization specific values from the
         # Characterization sheet
 
         errlimit = float(char_sheet.range((1, 15)).value)
@@ -730,7 +732,7 @@ class Characterization(Experiment):
         Run the MCNP loop for the characterization
         The function detects if the run has already been started and if so
         the loop will continue from where the previous run left off.
-        
+
         If a restart is desired then the xxxxx_char.out file should be deleted.
 
         Parameters
@@ -747,7 +749,7 @@ class Characterization(Experiment):
         None.
 
         """
-        
+
         start_time = datetime.datetime.now()
 
         if not self.detector.validate_model(standard_sheet):
@@ -756,7 +758,7 @@ class Characterization(Experiment):
         if utilities.mcnp_running(iter_sheet) == 1:
             ctypes.windll.user32.MessageBoxW(0, f'MCNP is already running for this detector', 'MCNP running', 0)
             return
-        
+
         if char_sheet.range((14,6)).value == 'complete':
             ctypes.windll.user32.MessageBoxW(0, f'MCNP loop has already been completed for this detector', 'MCNP loop completed', 0)
             return
@@ -766,10 +768,18 @@ class Characterization(Experiment):
         dcg_filename = self.detector.create_point_dcgfile(self.folder_name)
         subprocess.call(['P:\ISOCSProduction\Codes\MakeDCGTools\MakeDCGTools_v1_2.exe', dcg_filename])
 
+        name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_Ref_Pnt_Coo.TXT')
+        backup_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_Ref_Pnt_Coo_backup.TXT')
+        # The file created from MakeDCGTools has the wrong format
+        # so it needs to be reformatted.
+        self.reformat_pnt_file(name, backup_name)
+        # Add any detector specific points to the points file.
+        self.detector.add_characterization_points(name)
+
         queued = []
         completed = {}
         previous = {}
-        
+
         # Check if .outfile exist and read the results from previous run
         outfile_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_char.out')
         logfile_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}.log')
@@ -785,15 +795,10 @@ class Characterization(Experiment):
                 os.remove(outfile_name)
                 if os.path.isfile(logfile_name):
                     os.remove(logfile_name)
-        
+
         # Create sources and populate the queued list if the point/energy was not completed
         # in a previos run
         counter = 0
-        name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_Ref_Pnt_Coo.TXT')
-        backup_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_Ref_Pnt_Coo_backup.TXT')
-        # The file created from MakeDCGTools has the wrong format
-        # so it needs to be reformatted.
-        self.reformat_pnt_file(name, backup_name)
         with open(name, 'r') as dcg_file:
             for line in dcg_file:
                 # remove multiple whitespaces
@@ -812,14 +817,14 @@ class Characterization(Experiment):
                                                   self.defaulthist, x, y, z))
                     counter += 1
 
-        # If not all previous simulations has been accounted for there was 
+        # If not all previous simulations has been accounted for there was
         # a mismatch between the two points file and the loop needs to be aborted.
         if len(previous) != 0:
-            ctypes.windll.user32.MessageBoxW(0, f'Missmatch between previous and current points file', 'Points missmatch', 0)            
-            return 
+            ctypes.windll.user32.MessageBoxW(0, f'Missmatch between previous and current points file', 'Points missmatch', 0)
+            return
 
-        print(len(queued))            
-            
+        print(len(queued))
+
         # Set the queue folders
         if self.queue.lower() == 'alpha':
             inque_folder = r'P:\ISOCSProduction\Manager\InQueue'
@@ -828,33 +833,33 @@ class Characterization(Experiment):
             inque_folder = r'P:\ISOCSProduction\ManagerB\InQueue'
             outque_folder = r'P:\ISOCSProduction\ManagerB\OutQueue'
         else:
-            ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.queue}', 'Unknown queue', 0)            
+            ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.queue}', 'Unknown queue', 0)
             return
-        
-        if len(queued) > 0:        
+
+        if len(queued) > 0:
             with open(outfile_name, 'a') as outfile, open(logfile_name, 'a', buffering=1) as logfile:
-            
+
                 if self.debug:
-                    if not os.path.isdir('debug'):
-                        os.mkdir('debug')
-                
+                    if not os.path.isdir(os.path.join(self.folder_name, 'debug')):
+                        os.mkdir(os.path.join(self.folder_name, 'debug'))
+
                 # Set the flag that the loop is running
                 utilities.set_mcnp_running(iter_sheet, 1)
-                
+
                 logfile.write(f'{datetime.datetime.now()}Starting loop with {len(queued)} files\n')
-                
+
                 # Start the Tk window that takes care of submitting and
                 # recieving the mcnp simulations
                 app = Window(self, queued, completed,
                              inque_folder, outque_folder, outfile, logfile)
-                
+
                 app.after(100, app.process_mcnp)
                 app.mainloop()
                 app.destroy()
-    
+
                 # Clear the flag that the loop is running
                 utilities.set_mcnp_running(iter_sheet, 0)
-                
+
                 if app.aborted:
                     return
 
@@ -862,7 +867,7 @@ class Characterization(Experiment):
                 runtime = int((end_time - start_time).total_seconds())
                 print(runtime)
                 logfile.write(f'\nTotal Running time was {runtime} seconds\n')
-        
+
         shutil.copy(outfile_name, os.path.join(self.folder_name, f'{self.detector.serialnumber}_char_backup.out'))
         with open(os.path.join(self.folder_name, f'{self.detector.serialnumber}.out'), 'w') as outfile:
             for res in sorted(completed.values()):
@@ -897,7 +902,7 @@ class Characterization(Experiment):
             for line in old_file:
                 parts = ' '.join(line.split()).split()
                 new_file.write(f'{parts[1]:<13} {parts[0]:>10}\n')
-                        
+
 
 class Window(tk.Tk):
     def __init__(self, experiment, queued, completed, inque_folder, outque_folder, outfile, logfile):
@@ -938,7 +943,7 @@ class Window(tk.Tk):
         elif self.experiment.priority == 2:
             self.extension = 'i2'
         self.finished = False
-        
+
         # The window layout.
         self.info_frame = tk.LabelFrame(self, text='Information')
         self.info_frame.grid(row=0, column=0)
@@ -987,7 +992,7 @@ class Window(tk.Tk):
                 base_file_name = f'{self.experiment.detector.serialnumber}_{source.counter}.{self.extension}'
                 file_name = os.path.join(self.experiment.folder_name, base_file_name)
                 self.experiment.detector.create_input_file(source, file_name, self.experiment.full_detector)
-                dest_name = os.path.join(self.inque_folder, base_file_name)                
+                dest_name = os.path.join(self.inque_folder, base_file_name)
                 #self.logfile.write(f'{datetime.datetime.now()} Created {source.counter} with nps {source.nps}\n')
                 try:
                     if self.experiment.debug:
@@ -1000,8 +1005,8 @@ class Window(tk.Tk):
                 except:
                     self.logfile.write(f'{datetime.datetime.now()} Error encountered when moving file {base_file_name}\n')
                     os.remove(file_name)
-                    self.queued.insert(0, (source))        
-                
+                    self.queued.insert(0, (source))
+
         #self.logfile.write(f'{datetime.datetime.now()} {files_submitted} files submitted\n')
         filelist = glob.glob(os.path.join(self.outque_folder, f'{self.experiment.detector.serialnumber}_*.o'))
         #self.logfile.write(f'{datetime.datetime.now()} Processing {len(filelist)} files\n')
@@ -1066,19 +1071,19 @@ class Window(tk.Tk):
         if len(self.queued) == 0 and len(self.submitted) == 0:
             self.finished = True
             self.quit()
-        
+
         self.logfile.write(f'{datetime.datetime.now()} queued={len(self.queued)}, submitted={len(self.submitted)}, finished={len(self.completed)}\n')
         self.queued_label['text'] = f'Queued: {len(self.queued)}'
         self.submitted_label['text'] = f'Submitted: {len(self.submitted)}'
         self.completed_label['text'] = f'Finished: {len(self.completed)}'
         self.progress_bar['value'] = len(self.completed)
-        
+
         self.outfile.flush()
         self.logfile.flush()
-        
-        #self.logfile.write('Process MCNP finished\n')        
+
+        #self.logfile.write('Process MCNP finished\n')
         self.after(1000, self.process_mcnp)
-        
+
     def abort(self, message='Aborted by user'):
         """
         Handle abort request from the user
@@ -1153,7 +1158,7 @@ class Result:
         self.seconds = seconds
         self.type = type
         self.source = source
-        
+
     def get_coordinates(self):
         """
         returns a set of the polar coordinates for the source and the energy
@@ -1171,7 +1176,7 @@ class Result:
 
         """
         return (self.r, self.theta, self.phi, self.energy)
-        
+
     def __str__(self):
         """
         The to string function formatted to be compatible with the format of the
@@ -1203,7 +1208,7 @@ class Result:
         """
         if self.r < other.r:
             return True
-        if self.r == other.r: 
+        if self.r == other.r:
             if self.theta < other.theta:
                 return True
             if self.theta == other.theta:
@@ -1215,7 +1220,7 @@ class Result:
 
     def exist(self, r, theta, phi, energy):
         """
-        
+
 
         Parameters
         ----------
@@ -1271,4 +1276,3 @@ class Result:
         return cls(r, theta, phi, energy, eff, eff_unc, total_eff, total_eff_unc, peak2total, nps, seconds, type)
 
 
-                

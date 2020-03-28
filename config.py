@@ -28,9 +28,9 @@ def main():
     standard_sheet = utilities.sheet_from_name(wb, 'StandardCFGs')
     experiment = Iteration.default_parameters(utilities.serial_number(wb), utilities.model_number(wb), init_sheet, standard_sheet, os.path.dirname(wb.fullname), utilities.order_number(wb))
     experiment.write_config_page(config_sheet)
-             
+
 
 if __name__ == '__main__':
     # Expects the Excel file next to this source file, adjust accordingly.
-    xw.Book('SN#####_v5_0_0.xlsm').set_mock_caller()
+    xw.Book('SNB20231_v5_1.xlsm').set_mock_caller()
     main()
