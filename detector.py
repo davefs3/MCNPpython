@@ -2146,7 +2146,7 @@ class GCW(Detector):
         text.append(f'36    {mat_lib.number("ge")} -{mat_lib.density("ge")} 20 -22 42 -41 {self.importance(electrontrack)}  $ Front bevel dead layer\n')
         text.append(f'37    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} -21 -22 43 {self.importance(electrontrack)}  $ Vacuum outside back bevel\n')
         text.append(f'38    {mat_lib.number("ge")} -{mat_lib.density("ge")} -21 -22 44 -43 {self.importance(electrontrack)}  $ Back bevel dead layer\n')
-        text.append(f'40    {mat_lib.number("ge")} -{mat_lib.density("ge")} 23 -25 -24 #25 #28 #29 #30 #31 #32 #33\n')
+        text.append(f'40    {mat_lib.number("ge")} -{mat_lib.density("ge")} 20 -25 -24 #20 #23 #25 #28 #29 #30 #31 #32 #33\n')
         text.append(f'      #34 #35 #36 #37 #38 #(20 -31 -30) {self.importance(electrontrack, crystal=True)}  $ Active Crystal\n')
 
         text.append(f'50    {mat_lib.number(self.dimensions["insul_f_mat"])} -{self.dimensions["insul_f_den"]} 50 -20 4 -53 {self.importance(electrontrack)}  $ Front insulator 1\n')
