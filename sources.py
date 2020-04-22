@@ -1539,7 +1539,7 @@ class DR(Source):
 
 class WE(Source):
     def __init__(self, energy, counter, nps, well_bottom, inner_radius=0.4875,
-                 outer_radius=0.5875, fill_height=1.6019):
+                 outer_radius=0.5875, fill_height=1.5019):
         """
         The source used for the well characterization (WE) measurement
 
@@ -1622,7 +1622,7 @@ class WE(Source):
             The MCNP material numbers.
 
         """
-        return [18, 20]
+        return [19, 20]
 
     def surfaces(self):
         """
@@ -1678,7 +1678,7 @@ class WE(Source):
 
         x = 0.0
         y = 0.0
-        z = self.well_bottom - 1.6019
+        z = self.well_bottom - self.fill_height - 0.1
         return x, y, z
 
     def _axs(self):

@@ -18,7 +18,7 @@ import subprocess
 from sources import ZeroD, NinetyD, OneThirtyFiveD, DC, DF, DR, FortyFiveD, PointSource, WE
 import isocs_utility_functions as utilities
 from detector import AegisBEGe, AegisCoax, Generic, GCW
-import physpy.MCNP as mcnp
+import mcnp
 
 class Experiment:
     def __init__(self, detector, ordernumber, folder_name, simtype='full', errlimit=0.01, defaulthist=35000, maxhist=1000000,
@@ -496,7 +496,7 @@ class Iteration(Experiment):
             outfile.seek(0)
             outfile.truncate()
             previous_type = ''
-            column = iteration_sheet.range((start_row, 1), (start_row, iteration_sheet.cells.last_cell.column)).end('right').column + 1
+            column = iteration_sheet.range((start_row + 11, 1), (start_row + 11, iteration_sheet.cells.last_cell.column)).end('right').column + 1
             eff_range = iteration_sheet.range((start_row, 3), (end_row, 3))
             unc_range = iteration_sheet.range((start_row, 4), (end_row, 4))
             res_range = iteration_sheet.range((start_row, column), (end_row, column + 1))
@@ -519,13 +519,13 @@ class Iteration(Experiment):
                     energy_counter += 1
                 outfile.write(str(res) + '\n')
                 if res.type == 'DR':
-                    eff_ratio = res.eff / eff_range[counter].value / 0.0012
+                    eff_ratio = res.eff / eff_range[counter].value / 0.0012 if eff_range[counter].value is not None else 0
                 else:
-                    eff_ratio = res.eff / eff_range[counter].value
+                    eff_ratio = res.eff / eff_range[counter].value if eff_range[counter].value is not None else 0
                 #TODO: decide on which uncertainty to display on the tab
                 # The CharTables tab assumes that the relative uncertainty in the ratio is displayed
                 # leaving it as that for now.
-                rel_unc_ratio = np.sqrt((res.unc)**2 + (unc_range[counter].value/100.0)**2 + res.source.geometry_error**2)
+                rel_unc_ratio = np.sqrt((res.unc)**2 + (unc_range[counter].value/100.0)**2 + res.source.geometry_error**2) if unc_range[counter].value is not None else 0
                 unc_ratio = eff_ratio * rel_unc_ratio
                 res_range[counter, 0].value = eff_ratio
                 res_range[counter, 1].value = rel_unc_ratio
@@ -533,12 +533,15 @@ class Iteration(Experiment):
                     res_range[counter, 0].api.Interior.ColorIndex = 20
                     res_range[counter, 1].api.Interior.ColorIndex = 20
                 elif np.abs(eff_ratio - 1.0) > 2.0*unc_ratio:
+                    one_sigma += 1
                     two_sigma += 1
                     res_range[counter, 0].api.Interior.ColorIndex = 3
                     valid_measurements += 1
                 elif np.abs(eff_ratio - 1.0) > unc_ratio:
                     one_sigma += 1
                     res_range[counter, 0].api.Interior.ColorIndex = 6
+                    valid_measurements += 1
+                else:
                     valid_measurements += 1
                 efficiencies[counter] = eff_ratio
 
@@ -643,7 +646,8 @@ class Iteration(Experiment):
 class Characterization(Experiment):
     def __init__(self, detector, ordernumber, folder_name, simtype='full', errlimit=0.01, defaulthist=100000, maxhist=100000000,
                  queue='alpha', coorname=None, electrontrack=False, debug=False,
-                 full_detector=True, customer='', low_energy_validation=True):
+                 full_detector=True, customer='', low_energy_validation=True,
+                 max_lost_particles=100):
         """
 
 
@@ -686,7 +690,7 @@ class Characterization(Experiment):
         super().__init__(detector, ordernumber, folder_name, simtype, errlimit,
              defaulthist, maxhist, queue, coorname, electrontrack, debug,
              full_detector, customer, priority=2, max_submitted=50,
-             max_lost_particles=100, low_energy_validation=low_energy_validation)
+             max_lost_particles=max_lost_particles, low_energy_validation=low_energy_validation)
         self.parfile_energies = [10, 12, 16, 22, 32, 45, 60, 80, 100, 122, 186,
                                  300, 500, 662, 898, 1173, 1332, 1836, 3000,
                                  7000]
@@ -722,10 +726,12 @@ class Characterization(Experiment):
         defaulthist = int(char_sheet.range((2, 15)).value)
         maxhist = int(char_sheet.range((3, 15)).value)
         queue = char_sheet.range((4, 15)).value
+        max_lost_particles = int(char_sheet.range((5, 15)).value)
 
         return cls(detector, ordernumber, folder_name, simtype=simtype, errlimit=errlimit, defaulthist=defaulthist, maxhist=maxhist,
                  queue=queue, coorname=coorname, electrontrack=electrontrack, debug=debug,
-                 full_detector=fulldetector, customer=customer, low_energy_validation=low_energy_validation)
+                 full_detector=fulldetector, customer=customer, low_energy_validation=low_energy_validation,
+                 max_lost_particles=max_lost_particles)
 
     def run(self, char_sheet, iter_sheet, standard_sheet):
         """
@@ -868,6 +874,9 @@ class Characterization(Experiment):
                 print(runtime)
                 logfile.write(f'\nTotal Running time was {runtime} seconds\n')
 
+                if app.lost_particles:
+                    ctypes.windll.user32.MessageBoxW(0, 'Some runs was stopped because of lost particles. Proceed with caution or restart with higher max lost particles', 'Lost particles', 0)
+
         shutil.copy(outfile_name, os.path.join(self.folder_name, f'{self.detector.serialnumber}_char_backup.out'))
         with open(os.path.join(self.folder_name, f'{self.detector.serialnumber}.out'), 'w') as outfile:
             for res in sorted(completed.values()):
@@ -905,7 +914,7 @@ class Characterization(Experiment):
 
 
 class Window(tk.Tk):
-    def __init__(self, experiment, queued, completed, inque_folder, outque_folder, outfile, logfile):
+    def __init__(self, experiment, queued, completed, inque_folder, outque_folder, outfile, logfile, lost_file=None):
         """
         Tk window that handles submitting and recieving files with the MCNP manager.
 
@@ -963,7 +972,7 @@ class Window(tk.Tk):
         self.completed_label.grid(row=2, column=0)
         self.progress_bar.grid(row=3, column=0)
         self.progress_bar['value'] = 0
-        self.progress_bar['maximum'] = len(queued)
+        self.progress_bar['maximum'] = len(queued) + len(completed)
         self.button = tk.Button(self, text='Abort', command=self.abort)
         self.button.grid(row=2, column=0)
         self.aborted = False
@@ -1023,21 +1032,22 @@ class Window(tk.Tk):
                     tally = mcnp.f8tally(iostream, 8)
                     if len(tally.efficiencies) > 0:
                         if (tally.uncertainties[5] < self.experiment.errlimit and tally.efficiencies[5] > 0.0) or source.nps == self.experiment.maxhist:
-                            r = source.r
-                            phi = source.phi
-                            theta = 180 - np.rad2deg(source.theta)
-                            eff = tally.efficiencies[5] if tally.efficiencies[5] > 0.0 else source.weight(self.experiment.detector) / source.nps
-                            unc = tally.uncertainties[5] if tally.uncertainties[5] > 0.0 else 10.0
-                            total_eff = tally.total_efficiency() if tally.total_efficiency() > 0.0 else source.weight(self.experiment.detector) / source.nps
-                            total_eff_unc = tally.total_efficiency_uncertainty() if tally.total_efficiency_uncertainty() > 0.0 else 10.0
-                            peak_to_total = eff/total_eff if total_eff > 0.0 else 0.0
-                            seconds = tally.run_time
-                            res = Result(r, theta, phi, source.energy, eff,
-                                         unc, total_eff, total_eff_unc,
-                                         peak_to_total, source.nps, seconds,
-                                         source.type, source)
-                            self.completed[counter] = res
-                            self.outfile.write(str(res) + '\n')
+                            self._write_tally_result_to_file(tally, source, counter)
+                            # r = source.r
+                            # phi = source.phi
+                            # theta = 180 - np.rad2deg(source.theta)
+                            # eff = tally.efficiencies[5] if tally.efficiencies[5] > 0.0 else source.weight(self.experiment.detector) / source.nps
+                            # unc = tally.uncertainties[5] if tally.uncertainties[5] > 0.0 else 10.0
+                            # total_eff = tally.total_efficiency() if tally.total_efficiency() > 0.0 else source.weight(self.experiment.detector) / source.nps
+                            # total_eff_unc = tally.total_efficiency_uncertainty() if tally.total_efficiency_uncertainty() > 0.0 else 10.0
+                            # peak_to_total = eff/total_eff if total_eff > 0.0 else 0.0
+                            # seconds = tally.run_time
+                            # res = Result(r, theta, phi, source.energy, eff,
+                            #              unc, total_eff, total_eff_unc,
+                            #              peak_to_total, source.nps, seconds,
+                            #              source.type, source)
+                            # self.completed[counter] = res
+                            # self.outfile.write(str(res) + '\n')
                             self.logfile.write(f'{datetime.datetime.now()} Finished {counter}\n')
                         else:
                             if tally.uncertainties[5] == 0.0:
@@ -1059,14 +1069,24 @@ class Window(tk.Tk):
                     else:
                         os.remove(os.path.join(self.experiment.folder_name, os.path.basename(file)))
                 except ValueError:
-                    self.lost_particles = True
-                    iostream.close()
                     if source.max_lost_particles < self.experiment.max_lost_particles:
                         source.max_lost_particles = self.experiment.max_lost_particles
                         self.logfile.write(f'{datetime.datetime.now()} Resubmitted {source.counter} with nps {source.nps} and lost {source.max_lost_particles}\n')
                         self.queued.insert(0, (source))
+                        iostream.close()
                     else:
-                        shutil.move(os.path.join(self.experiment.folder_name, os.path.basename(file)), os.path.join(self.experiment.folder_name, f'lost_particles_{source.counter}.o'))
+                        self.lost_particles = True
+                        # counter = int(os.path.basename(file).split('_')[-1].split('.')[0])
+                        # source = self.submitted.pop(counter)
+                        tally = mcnp.f8tally(iostream, 8, ignore_lost_particles=True)
+                        self._write_tally_result_to_file(tally, source, counter)
+                        self.logfile.write(f'{datetime.datetime.now()} Simulation {counter} finished because of lost particles but was still written to out file.\n')
+                        iostream.close()
+                        shutil.copy(os.path.join(self.experiment.folder_name, os.path.basename(file)), os.path.join(self.experiment.folder_name, f'lost_particles_{source.counter}.o'))
+                    if self.experiment.debug:
+                        shutil.move(os.path.join(self.experiment.folder_name, os.path.basename(file)), os.path.join(self.experiment.folder_name, 'debug', os.path.basename(file)))
+                    else:
+                        os.remove(os.path.join(self.experiment.folder_name, os.path.basename(file)))
 
         if len(self.queued) == 0 and len(self.submitted) == 0:
             self.finished = True
@@ -1105,6 +1125,39 @@ class Window(tk.Tk):
         ctypes.windll.user32.MessageBoxW(0, message, 'Abort', 0)
         self.quit()
 
+    def _write_tally_result_to_file(self, tally, source, counter):
+        """
+        Write the results of the f8 tally to the out file.
+
+        Parameters
+        ----------
+        tally : F8tally
+            The f8 tally that contains the results.
+        source : Source
+            The Source containing the description of the source used in the calculation.
+        counter : Integer
+            The counter for the MCNP simulation.
+
+        Returns
+        -------
+        None.
+
+        """
+        r = source.r
+        phi = source.phi
+        theta = 180 - np.rad2deg(source.theta)
+        eff = tally.efficiencies[5] if tally.efficiencies[5] > 0.0 else source.weight(self.experiment.detector) / source.nps
+        unc = tally.uncertainties[5] if tally.uncertainties[5] > 0.0 else 10.0
+        total_eff = tally.total_efficiency() if tally.total_efficiency() > 0.0 else source.weight(self.experiment.detector) / source.nps
+        total_eff_unc = tally.total_efficiency_uncertainty() if tally.total_efficiency_uncertainty() > 0.0 else 10.0
+        peak_to_total = eff/total_eff if total_eff > 0.0 else 0.0
+        seconds = tally.run_time
+        res = Result(r, theta, phi, source.energy, eff,
+                     unc, total_eff, total_eff_unc,
+                     peak_to_total, source.nps, seconds,
+                     source.type, source)
+        self.completed[counter] = res
+        self.outfile.write(str(res) + '\n')
 
 class Result:
     def __init__(self, r, theta, phi, energy, eff, unc, total_eff, total_eff_unc, peak_to_total, nps, seconds, type, source=None):

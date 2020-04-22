@@ -58,9 +58,14 @@ class MeasurementEnergy:
     def efficiency(self):
         efficiencies = np.array(self.efficiencies)
         uncertainties = np.array(self.uncertainties) * efficiencies /100.0
+        # remove measurements with 0 efficiencies and uncertainty
+        efficiencies = efficiencies[efficiencies != 0.0]
+        uncertainties = uncertainties[uncertainties != 0.0]
+        if np.sum(efficiencies) == 0.0:
+            return '', ''
 
         weighted_average = np.sum(efficiencies/uncertainties**2) / np.sum(1.0 / uncertainties**2)
-        uncertainty = np.sqrt(1.0 / np.sum(1.0/uncertainties**2)) / weighted_average
+        uncertainty = np.sqrt(1.0 / np.sum(1.0 / uncertainties**2)) / weighted_average
         stdev = np.std(efficiencies) / weighted_average
         uncertainty = np.sqrt(uncertainty**2 + self.correlated_uncertainty**2 + stdev**2) * 100.0
 
@@ -148,17 +153,14 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
         # Extract the geometry and remove trailing digits
         geometry = row[0].value.split('_')[-1].rstrip('1234567890')
         energy = row[1].value
-        efficiency = row[2].value
-        # only add rows containing values
-        if efficiency is None:
-            continue
-        peak_unc = row[12].value
-        source_unc = row[9].value
-        other_unc = row[27].value
+        efficiency = row[2].value if row[2].value is not None else 0.0
+        peak_unc = row[12].value if row[12].value is not None else 0.0
+        source_unc = row[9].value if row[9].value is not None else 0.0
+        other_unc = row[27].value if row[27].value is not None else 0.0
         independent_uncertainty = np.sqrt(peak_unc**2 + other_unc**2)
         correlated_uncertainty = source_unc
-
-        # convert to relative efficiency
+    
+            # convert to relative efficiency
         if geometry == 'DR':
             geometry = 'RELEFF'
             nrg = energy
@@ -166,7 +168,7 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
                 efficiency = efficiency / 0.0012
             else:
                 continue
-
+    
         if geometry in measurements:
             measurements[geometry].add_energy(energy, efficiency, independent_uncertainty, correlated_uncertainty)
         else:
@@ -212,7 +214,7 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
 
 if __name__ == '__main__':
     # Expects the Excel file next to this source file, adjust accordingly.
-    xw.Book('SNB20231_v5_1.xlsm').set_mock_caller()
+    xw.Book('SNB20231_v5_3.xlsm').set_mock_caller()
     #clear_initialize()
     main()
 
