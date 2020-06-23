@@ -1575,8 +1575,8 @@ class AegisCoax(Aegis):
 
         """
         # TODO: Add more validation checks.
-        if self.dimensions['xtal_prot'] >= 0.0:
-            return False, 'Crystal protrution >= 0.0'
+        if self.dimensions['xtal_prot'] > 0.0:
+            return False, 'Crystal protrution > 0.0'
 
         return True, ''
 
@@ -1648,7 +1648,7 @@ class AegisCoax(Aegis):
         indium_back_surface = crystal_back + self.dimensions['floor_indium_thick']
         floor_front_back_surface = indium_back_surface + self.dimensions['floor_front_thick']
         floor_lip_inner_radius = self.dimensions['floor_front_rad'] - self.dimensions['floor_lip_rad_thick']
-        floor_back = indium_back_surface + self.dimensions['floor_thickness']
+        floor_back = floor_front_back_surface + self.dimensions['floor_thickness']
         floor_back_front_surface = floor_back - self.dimensions['floor_lip_thick']
 
         text = [f'74   PZ {indium_back_surface} $ Floor indium back\n',
@@ -1725,7 +1725,7 @@ class AegisCoax(Aegis):
             The cell cards that descibes the cell for the air inside the holder.
 
         """
-        return f'47   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 13 -62 -14 #64 #65 #66 #67 #68 {self.importance(electrontrack)}  $ Air inside holder\n'
+        return f'47   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 13 -62 -14 #64 #65 #66 #68 {self.importance(electrontrack)}  $ Air inside holder\n'
 
     def holder_floor_cells(self, mat_lib, electrontrack):
         """
