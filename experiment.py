@@ -867,6 +867,7 @@ class Characterization(Experiment):
                 utilities.set_mcnp_running(iter_sheet, 0)
 
                 if app.aborted:
+                    utilities.set_mcnp_running(iter_sheet, 0)
                     return
 
                 end_time = datetime.datetime.now()

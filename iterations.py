@@ -159,7 +159,7 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
         other_unc = row[27].value if row[27].value is not None else 0.0
         independent_uncertainty = np.sqrt(peak_unc**2 + other_unc**2)
         correlated_uncertainty = source_unc
-    
+
             # convert to relative efficiency
         if geometry == 'DR':
             geometry = 'RELEFF'
@@ -168,7 +168,7 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
                 efficiency = efficiency / 0.0012
             else:
                 continue
-    
+
         if geometry in measurements:
             measurements[geometry].add_energy(energy, efficiency, independent_uncertainty, correlated_uncertainty)
         else:
@@ -214,7 +214,7 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
 
 if __name__ == '__main__':
     # Expects the Excel file next to this source file, adjust accordingly.
-    xw.Book('SNB20231_v5_3.xlsm').set_mock_caller()
+    xw.Book('SN11369_v5_6.xlsm').set_mock_caller()
     #clear_initialize()
     main()
 

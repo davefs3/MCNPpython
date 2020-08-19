@@ -827,7 +827,7 @@ class Aegis(Detector, ABC):
             text.append(f'4    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])}  1 -4 -7 {self.importance(electrontrack)}  $ End cap front\n')
 
         text.append(f'5    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])} 4 -8 6 -7 {self.importance(electrontrack)}  $ Side of End cap\n')
-        text.append(f'6    {mat_lib.number(self.dimensions["ec_back_mat"])} -{mat_lib.density(self.dimensions["ec_back_mat"])} 8 -9 -7 #70 {self.importance(electrontrack)}  $ Back of End cap\n')
+        text.append(f'6    {mat_lib.number(self.dimensions["ec_back_mat"])} -{mat_lib.density(self.dimensions["ec_back_mat"])} 8 -9 -7 #69 #70 {self.importance(electrontrack)}  $ Back of End cap\n')
         text.append(f'11   {mat_lib.number("ge")} -{mat_lib.density("ge")} 11 -12 -18 {self.importance(electrontrack)}  $ Front dead layer\n')
         text.append(f'12   {mat_lib.number("ge")} -{mat_lib.density("ge")} 15 -14 -13 -18 12 #36 #37 {self.importance(electrontrack)} $ Side dead layer\n')
         text.append(f'14   {mat_lib.number("ge")} -{mat_lib.density("ge")} 35 -15 16 -13 {self.importance(electrontrack)} $ Back dead layer\n')
@@ -856,6 +856,8 @@ class Aegis(Detector, ABC):
         text.append(f'52   {mat_lib.number(self.dimensions["insul_f2_mat"])} -{self.dimensions["insul_f2_den"]} 52 -51 -61 {self.importance(electrontrack)} $ Front outer insulator\n')
         text.append(f'53   {mat_lib.number(self.dimensions["insul_s_mat"])} -{self.dimensions["insul_s_den"]} 11 -72 14 -53  {self.importance(electrontrack)} $ side inner insulator\n')
         text.append(f'54   {mat_lib.number(self.dimensions["insul_s2_mat"])} -{self.dimensions["insul_s2_den"]} 11 -72 53 -54  {self.importance(electrontrack)} $ side outer insulator\n')
+        text.append(f'55   {mat_lib.number(self.dimensions["insul_b_mat"])} -{self.dimensions["insul_b_den"]} 13 -55 -14 {self.importance(electrontrack)} $ back inner insulator\n')
+        text.append(f'56   {mat_lib.number(self.dimensions["insul_b2_mat"])} -{self.dimensions["insul_b2_den"]} 55 -56 -14 {self.importance(electrontrack)} $ back outer insulator\n')
         text.append(f'60   {mat_lib.number(self.dimensions["holder_mat"])} -{mat_lib.density(self.dimensions["holder_mat"])} 60 -62 54 -61  {self.importance(electrontrack)} $ holder side\n')
         text.append(f'61   {mat_lib.number(self.dimensions["holder_mat"])} -{mat_lib.density(self.dimensions["holder_mat"])} 64 -65 61 -63  {self.importance(electrontrack)} $ ring 1\n')
         text.append(f'62   {mat_lib.number(self.dimensions["holder_mat"])} -{mat_lib.density(self.dimensions["holder_mat"])} 67 -68 61 -66  {self.importance(electrontrack)} $ ring 2\n')
@@ -912,6 +914,7 @@ class Aegis(Detector, ABC):
             A list with the surface cards for the Aegis detector.
 
         """
+        xtal_protrusion = min((self.dimensions['floor_thickness'] + self.dimensions['floor_indium_thick'] + self.dimensions['insul_back'] + self.dimensions['insul_back2'] + self.dimensions['xtal_len'] - self.dimensions['holder_len'] - self.dimensions['floor_lip_thick']), -0.00001)
 
         # Varibles used to populate the surfaces in the
         window_front_face = self.dimensions['ec_face'] - self.dimensions['win_thick']
@@ -935,11 +938,13 @@ class Aegis(Detector, ABC):
         groove_outer_dead_layer = self.dimensions['groove_orad'] + self.dimensions['groove_dl']
         dead_layer_inside_groove = self.dimensions['ec_xtal_dist']+ self.dimensions['xtal_len'] - self.dimensions['contact_dl']
 
-        holder_top = self.dimensions['ec_xtal_dist'] + self.dimensions['xtal_prot']
+        holder_top = self.dimensions['ec_xtal_dist'] + xtal_protrusion
         inner_front_insulator = holder_top - self.dimensions['insul_front']
         outer_front_insulator = inner_front_insulator - self.dimensions['insul_front2']
         inner_side_insulator = self.dimensions['xtal_rad'] + self.dimensions['insul_side']
         outer_side_insulator = inner_side_insulator + self.dimensions['insul_side2']
+        inner_back_insulator = crystal_back + self.dimensions['insul_back']
+        outer_back_insulator = inner_back_insulator + self.dimensions['insul_back2']
         holder_outer_radius = outer_side_insulator + self.dimensions['holder_thick']
         holder_bottom = holder_top + self.dimensions['holder_len']
         ring1_outer_radius = holder_outer_radius + self.dimensions['holder_r1_thick']
@@ -953,7 +958,7 @@ class Aegis(Detector, ABC):
         ring3_bottom = ring3_top + self.dimensions['holder_r3_width']
         holder_back_front_surface = holder_bottom - self.dimensions['holder_back']
 
-        floor_back = crystal_back + self.dimensions['floor_indium_thick'] + self.dimensions['floor_thickness']
+        floor_back = outer_back_insulator + self.dimensions['floor_indium_thick'] + self.dimensions['floor_thickness']
 
         fet_cover_front_inner_radius = self.dimensions['cup_rad'] - self.dimensions['cup_sidethick']
         fet_cover_back = floor_back + self.dimensions['cup_len']
@@ -1059,6 +1064,8 @@ class Aegis(Detector, ABC):
         text.append(f'52   PZ {outer_front_insulator} $ outer front insulator\n')
         text.append(f'53   CZ {inner_side_insulator} $ inner side insulator\n')
         text.append(f'54   CZ {outer_side_insulator} $ outer side insulator\n')
+        text.append(f'55   PZ {inner_back_insulator} $ inner back insulator\n')
+        text.append(f'56   PZ {outer_back_insulator} $ outer back insulator\n')
         text.append(f'60   PZ {holder_top} $ holder top\n')
         text.append(f'61   CZ {holder_outer_radius} $ holder outside radius\n')
         text.append(f'62   PZ {holder_bottom} $ holder side bottom\n')
@@ -1074,7 +1081,7 @@ class Aegis(Detector, ABC):
         text.append(f'72   PZ {holder_back_front_surface} $ Holder back front surface\n')
         text.append(f'73   CZ {self.dimensions["holder_back_opening"]} $ Holder back opening radius\n')
 
-        text += self.holder_floor_surfaces(crystal_back)
+        text += self.holder_floor_surfaces(outer_back_insulator)
 
         text.append(f'85   CZ {fet_cover_front_inner_radius} $ FET Cover side inner radius\n')
         text.append(f'86   CZ {self.dimensions["cup_rad"]} $ FET Cover side outer radius\n')
@@ -1278,8 +1285,8 @@ class AegisBEGe(Aegis):
 
         """
         # TODO: Add more validation checks.
-        if self.dimensions['xtal_prot'] >= 0.0:
-            return False, 'Crystal protrusion >= 0.0'
+        if self.dimensions['xtal_len'] > self.dimensions['holder_len']:
+            return False, 'Crystal is too long'
 
         return True, ''
 
@@ -1296,14 +1303,14 @@ class AegisBEGe(Aegis):
         """
         return []
 
-    def holder_floor_surfaces(self, crystal_back):
+    def holder_floor_surfaces(self, outer_back_insulator):
         """
         The surfaces that describes the holder floor of the Aegis detector
 
         Parameters
         ----------
-        crystal_back : float
-            The distance from the endcap to the back of the crystal.
+        outer_back_insulator : float
+            The distance from the endcap to the back outer back absorber.
 
         Returns
         -------
@@ -1311,7 +1318,7 @@ class AegisBEGe(Aegis):
             List of holder floor surfaces.
 
         """
-        indium_back_surface = crystal_back + self.dimensions['floor_indium_thick']
+        indium_back_surface = outer_back_insulator + self.dimensions['floor_indium_thick']
         floor_front_back_surface = indium_back_surface + self.dimensions['floor_front_thick']
         floor_lip_inner_radius = self.dimensions['floor_front_rad'] - self.dimensions['floor_lip_rad_thick']
         floor_ring_outer_radius = self.dimensions['floor_ring_inner_rad'] + self.dimensions['floor_ring_thick']
@@ -1414,7 +1421,7 @@ class AegisBEGe(Aegis):
             The cell cards that descibes the cell for the air inside the holder.
 
         """
-        return f'47   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 13 -62 -14 #64 #65 #66 #67 #68 {self.importance(electrontrack)}  $ Air inside holder\n'
+        return f'47   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 56 -62 -14 #64 #65 #66 #67 #68 {self.importance(electrontrack)}  $ Air inside holder\n'
 
     def holder_floor_cells(self, mat_lib, electrontrack):
         """
@@ -1434,7 +1441,7 @@ class AegisBEGe(Aegis):
             The cells describing the holder floor.
 
         """
-        text = [f'65   {mat_lib.number("in")} -{mat_lib.density("in")} 13 -74 75 -76 {self.importance(electrontrack)} $ floor indium\n',
+        text = [f'65   {mat_lib.number("in")} -{mat_lib.density("in")} 56 -74 75 -76 {self.importance(electrontrack)} $ floor indium\n',
                 f'66   {mat_lib.number(self.dimensions["floor_mat"])} -{mat_lib.density(self.dimensions["floor_mat"])} 74 -77 75 -76 {self.importance(electrontrack)} $ floor front\n',
                 f'67   {mat_lib.number(self.dimensions["floor_mat"])} -{mat_lib.density(self.dimensions["floor_mat"])} 77 -83 78 -79 {self.importance(electrontrack)} $ floor ring\n',
                 f'68   {mat_lib.number(self.dimensions["floor_mat"])} -{mat_lib.density(self.dimensions["floor_mat"])} (77 -83 80 -76):(82 -83 76 -81) {self.importance(electrontrack)} $ floor lip\n']
@@ -1476,7 +1483,7 @@ class AegisBEGe(Aegis):
                  f'win_rad {self.dimensions["win_rad"]}\n',
                  f'win_mat {self.dimensions["win_mat"]}\n',
                  f'win_thick {self.dimensions["win_thick"]}\n',
-                 f'xtal_prot {self.dimensions["xtal_prot"]}\n',
+                 f'xtal_prot 0.0\n',
                  f'holder_lippos {self.dimensions["holder_r1_pos"]}\n',
                  f'holder_mat {self.dimensions["holder_mat"]}\n',
                  f'holder_thick {self.dimensions["holder_thick"]}\n',
@@ -1575,8 +1582,15 @@ class AegisCoax(Aegis):
 
         """
         # TODO: Add more validation checks.
-        if self.dimensions['xtal_prot'] > 0.0:
-            return False, 'Crystal protrution > 0.0'
+        if self.dimensions['xtal_len'] > self.dimensions['holder_len']:
+            return False, 'Crystal is too long'
+
+        xtal_protrusion = min((self.dimensions['floor_thickness'] + self.dimensions['floor_indium_thick'] + self.dimensions['insul_back'] + self.dimensions['insul_back2'] + self.dimensions['xtal_len'] - self.dimensions['holder_len'] - self.dimensions['floor_lip_thick']), -0.00001)
+        if -xtal_protrusion > self.dimensions['ec_xtal_dist'] - self.dimensions['ec_face'] - self.dimensions['insul_front'] - self.dimensions['insul_front2']:
+             return False, 'Holder cannot fit, increase the endcap to crystal distance, the length of crystal, or back absorbers'
+
+        if self.dimensions['xtal_len'] + self.dimensions['holder_back'] + self.dimensions['insul_back'] + self.dimensions['insul_back2'] > self.dimensions['holder_len']:
+            return False, 'Crystal and absorbers cannot fit in holder, decrease them or increase the holder length'
 
         return True, ''
 
@@ -1630,14 +1644,14 @@ class AegisCoax(Aegis):
                 ]
         return text
 
-    def holder_floor_surfaces(self, crystal_back):
+    def holder_floor_surfaces(self, outer_back_insulator):
         """
         The surfaces that describes the holder floor of the Aegis detector
 
         Parameters
         ----------
         crystal_back : float
-            The distance from the endcap to the back of the crystal.
+            The distance from the endcap to the back of outer back absorber.
 
         Returns
         -------
@@ -1645,10 +1659,10 @@ class AegisCoax(Aegis):
             List of holder floor surfaces.
 
         """
-        indium_back_surface = crystal_back + self.dimensions['floor_indium_thick']
+        indium_back_surface = outer_back_insulator + self.dimensions['floor_indium_thick']
         floor_front_back_surface = indium_back_surface + self.dimensions['floor_front_thick']
         floor_lip_inner_radius = self.dimensions['floor_front_rad'] - self.dimensions['floor_lip_rad_thick']
-        floor_back = floor_front_back_surface + self.dimensions['floor_thickness']
+        floor_back = indium_back_surface + self.dimensions['floor_thickness']
         floor_back_front_surface = floor_back - self.dimensions['floor_lip_thick']
 
         text = [f'74   PZ {indium_back_surface} $ Floor indium back\n',
@@ -1725,7 +1739,7 @@ class AegisCoax(Aegis):
             The cell cards that descibes the cell for the air inside the holder.
 
         """
-        return f'47   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 13 -62 -14 #64 #65 #66 #68 {self.importance(electrontrack)}  $ Air inside holder\n'
+        return f'47   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 56 -62 -14 #64 #65 #66 #68 {self.importance(electrontrack)}  $ Air inside holder\n'
 
     def holder_floor_cells(self, mat_lib, electrontrack):
         """
@@ -1745,7 +1759,7 @@ class AegisCoax(Aegis):
             The cells describing the holder floor.
 
         """
-        text = [f'65   {mat_lib.number("in")} -{mat_lib.density("in")} 13 -74 75 -76 {self.importance(electrontrack)} $ floor indium\n',
+        text = [f'65   {mat_lib.number("in")} -{mat_lib.density("in")} 56 -74 75 -76 {self.importance(electrontrack)} $ floor indium\n',
                 f'66   {mat_lib.number(self.dimensions["floor_mat"])} -{mat_lib.density(self.dimensions["floor_mat"])} 74 -77 75 -76 {self.importance(electrontrack)} $ floor front\n',
                 f'68   {mat_lib.number(self.dimensions["floor_mat"])} -{mat_lib.density(self.dimensions["floor_mat"])} (77 -83 80 -76):(82 -83 76 -81) {self.importance(electrontrack)} $ floor lip\n']
 
@@ -1801,7 +1815,7 @@ class AegisCoax(Aegis):
                  f'win_rad {self.dimensions["win_rad"]}\n',
                  f'win_mat {self.dimensions["win_mat"]}\n',
                  f'win_thick {self.dimensions["win_thick"]}\n',
-                 f'xtal_prot {self.dimensions["xtal_prot"]}\n',
+                 f'xtal_prot 0.0\n',
                  f'groove_depth {self.dimensions["groove_depth"]}\n',
                  f'groove_irad {self.dimensions["groove_irad"]}\n',
                  f'groove_orad {self.dimensions["groove_orad"]}\n',
