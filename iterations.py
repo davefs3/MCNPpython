@@ -214,7 +214,7 @@ def clear_init(wb, sheet, config_sheet, meas_sheet):
 
 if __name__ == '__main__':
     # Expects the Excel file next to this source file, adjust accordingly.
-    xw.Book('SN11369_v5_6.xlsm').set_mock_caller()
+    xw.Book('SN#####_v5_6_8.xlsm').set_mock_caller()
     #clear_initialize()
     main()
 

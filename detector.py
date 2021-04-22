@@ -349,6 +349,10 @@ class Detector(ABC):
                 '      35000 -0.4842 \n',
                 '      55000 -0.311  \n',
                 '      57000 -0.1626  \n'
+                'M26   57000 1  $ LaBr3 5.08 g/cm3 \n',
+                '      35000 3 \n',
+                'M27   14000 1  $ SiO2 2.65 g/cm3 \n',
+                '      8000 2 \n',
                 ]
         return text
 
@@ -2445,6 +2449,7 @@ class Generic(Detector):
         self.modelnumber = 'Generic'
         self.header = 'Generic'
         self.low_energy_validation = True
+        self.short_modelnumber = 'Generic'
 
     def validate_dimensions(self):
         """
@@ -2622,8 +2627,7 @@ class Generic(Detector):
 ]
         return text
 
-
-    def cells(self, electrontrack):
+    def cells(self, source, electrontrack):
         """
         The cell cards for the Generic detector.
 
@@ -2649,7 +2653,7 @@ class Generic(Detector):
 
         text = ['C detector cells\n',
                 f'{endcap_front}',
-                f'4    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])} 3 -7 5 -6 {self.importance(electrontrack)}  $ Side of End cap\n',
+                f'4    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])} 4 -7 5 -6 {self.importance(electrontrack)}  $ Side of End cap\n',
                 f'5    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])} 7 -8 -6 {self.importance(electrontrack)}  $ Back of End cap\n',
                 f'6    {mat_lib.number(self.dimensions["xtal_mat"])} -{self.dimensions["xtal_den"]} 9 -10 -12 {self.importance(electrontrack)}  $ Front dead layer\n',
                 f'7    {mat_lib.number(self.dimensions["xtal_mat"])} -{self.dimensions["xtal_den"]} 10 -14 -12 13 {self.importance(electrontrack)} $ Side dead layer\n',
@@ -2666,7 +2670,7 @@ class Generic(Detector):
                 f'27   {mat_lib.number(self.dimensions["insul_b2_mat"])} -{self.dimensions["insul_b2_den"]} 26 -27 -24 {self.importance(electrontrack)} $ Holder back\n',
                 f'28   {mat_lib.number(self.dimensions["insul_b3_mat"])} -{self.dimensions["insul_b3_den"]} 27 -28 -25 {self.importance(electrontrack)} $ Holder back\n',
                 f'40   {mat_lib.number(self.dimensions["xtal_mat"])} -{self.dimensions["xtal_den"]} 10 -14 -13 {self.importance(electrontrack, crystal=True)} $ Crystal Active Volume\n',
-                f'41   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} (3 -22 -5):(22 -28 25 -5):(28 -7 -5) {self.importance(electrontrack)} $ Vacuum inside end cap\n',
+                f'41   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} (4 -22 -5):(22 -28 25 -5):(28 -7 -5) {self.importance(electrontrack)} $ Vacuum inside end cap\n',
 
         ]
         return text
@@ -2742,6 +2746,8 @@ class MCNPMaterialLibrary:
                           'det_vacuum':MCNPMaterial(3, 0.000012, 'N:78.50%O:21.1%AR:0.40%[Air]', 'DRYAIR'),
                           'char_vacuum':MCNPMaterial(3, 1.2e-10, 'N:78.50%O:21.1%AR:0.40%[Air]', 'DRYAIR'),
                           'cllbc':MCNPMaterial(25, 4.08, 'LI:0.81%CL:3.41%BR:48.42%CS:31.10%LA:16.26%[CLLBC]', "CLLBC"),
+                          'labr':MCNPMaterial(26, 5.08, 'BR:63.31%LA:36.69%[LABR]', "LABR"),
+                          'sio':MCNPMaterial(27, 2.65, 'SI:46.75%O:53.26%[SIO]', "SIO"),
                           }
 
     def material(self, name):

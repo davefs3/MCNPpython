@@ -456,6 +456,9 @@ class Iteration(Experiment):
         elif self.queue.lower() == 'bravo':
             inque_folder = r'P:\ISOCSProduction\ManagerB\InQueue'
             outque_folder = r'P:\ISOCSProduction\ManagerB\OutQueue'
+        elif self.queue.lower() == 'charlie':
+            inque_folder = r'P:\ISOCSProduction\ManagerC\InQueue'
+            outque_folder = r'P:\ISOCSProduction\ManagerC\OutQueue'
         else:
             ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.interation_queue}', 'Unknown queue', 0)
             return
@@ -838,6 +841,9 @@ class Characterization(Experiment):
         elif self.queue.lower() == 'bravo':
             inque_folder = r'P:\ISOCSProduction\ManagerB\InQueue'
             outque_folder = r'P:\ISOCSProduction\ManagerB\OutQueue'
+        elif self.queue.lower() == 'charlie':
+            inque_folder = r'P:\ISOCSProduction\ManagerC\InQueue'
+            outque_folder = r'P:\ISOCSProduction\ManagerC\OutQueue'
         else:
             ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.queue}', 'Unknown queue', 0)
             return

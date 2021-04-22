@@ -153,8 +153,8 @@ class Line:
                 str(self.fit_channel), str(self.channel_error), str(self.peak_error),
                 str(self.rise_time), str(self.flat_top), str(self.fd_mode), str(self.fd_setting),
                 str(self.purg_setting), str(self.lt_trim), str(self.ltc_on), str(self.sys_error)]
-        
-        
+
+
 class Geometry:
     def __init__(self, label):
         """
@@ -173,7 +173,7 @@ class Geometry:
         """
         self.label = label
         self.lines = []
-    
+
     def add_line(self, line):
         """
         Add a line to the measurement energy
@@ -205,18 +205,18 @@ class Geometry:
 
 def extract_generic(sheet, serial_number, tolerance=10.0):
     """
-    Extracts the measurement data for generic detectors and puts it in the 
+    Extracts the measurement data for generic detectors and puts it in the
     spreadsheet.
 
     Parameters
     ----------
     sheet : Sheet
-        The measurement sheet that contains the input data and that the output 
+        The measurement sheet that contains the input data and that the output
         data will be populated in.
     serial_number : String
         The serial number of the detector that is getting characterized.
     tolerance : float, optional
-        The tolerance between the measured peak energies and the certificate 
+        The tolerance between the measured peak energies and the certificate
         reference energy. The default is 10.0.
 
     Returns
@@ -233,6 +233,8 @@ def extract_generic(sheet, serial_number, tolerance=10.0):
         for row in file_range.rows:
             filename = row[0].value
             ctfname = row[1].value
+            if ctfname == 'Not Found':
+                continue
             meas_type = row[4].value
             if meas_type in geometries:
                 geometry = geometries[meas_type]
@@ -241,7 +243,7 @@ def extract_generic(sheet, serial_number, tolerance=10.0):
                 geometries[meas_type] = geometry
             ds.open(filename)
             peaks = ds.peaks
-            
+
             # measurement parameters
             meas_date = ds.getParameter(ParameterCodes.CAM_X_ASTIME)
             elive = ds.getParameter(ParameterCodes.CAM_X_ELIVE)
@@ -259,15 +261,15 @@ def extract_generic(sheet, serial_number, tolerance=10.0):
             # This should include all contribution to the uncertainty except the
             # source uncertainty, the decay correction uncertainty and the peak statistical uncertainty
             sys_error = ds.getParameter(ParameterCodes.CAM_F_SSYSERR)
-            
+
             # Certificate parameters
             ctf.open(os.path.join(os.path.dirname(filename), ctfname))
             records = ctf.count(ParameterCodes.CAM_F_CTFENER)
             ctf_date = ctf.getParameter(ParameterCodes.CAM_X_CTFDATE)
             ctf_quant = ctf.getParameter(ParameterCodes.CAM_F_CTFQUANT)
-            
+
             decay_time = (meas_date - ctf_date).total_seconds()
-            
+
             # Find matches between peak records and certifcate records
             for record in range(1, records + 1):
                 ctf_energy = ctf.getParameter(ParameterCodes.CAM_F_CTFENER, record)
@@ -280,30 +282,30 @@ def extract_generic(sheet, serial_number, tolerance=10.0):
                         source_error = ctf.getParameter(ParameterCodes.CAM_F_CTFERROR, record)
                         decay_factor = np.exp(-np.log(2.0)*decay_time/halflife)
                         decay_factor_unc = decay_factor*np.log(2.0)*decay_time/halflife**2*halflife_unc
-                        
+
                         peak_area = peak.area.value
                         peak_cps = peak.countrate.value
                         cps_error = peak.countrate.uncertainty
-                       
-                        
+
+
                         efficiency = peak_cps / ctf_gps / decay_factor
                         sigma = efficiency*np.sqrt((cps_error/100.0)**2 +
                                                    (decay_factor_unc/decay_factor)**2 +
-                                                   (source_error/100.0)**2 + 
+                                                   (source_error/100.0)**2 +
                                                    (sys_error/100.0)**2)
-                        
+
                         fit_energy = peak.energy.value
                         energy_error = peak.energy.uncertainty
                         fwhm = peak.fwhm.value
                         fwhm_error = peak.fwhm.uncertainty
                         fit_channel = peak.centroid.value
                         channel_error = peak.centroid.uncertainty
-                        
+
                         peak_error = peak.area.uncertainty
-                        
+
                         line = Line(ctf_energy, efficiency, sigma, peak_area,
                                     ctf_gps, decay_factor, lt_ratio, ereal,
-                                    source_error, meas_date, peak_cps, 
+                                    source_error, meas_date, peak_cps,
                                     cps_error, fit_energy, energy_error, fwhm,
                                     fwhm_error, fit_channel, channel_error,
                                     peak_error, rise_time, flat_top, fd_mode,
@@ -337,18 +339,18 @@ def main():
     wb = xw.Book.caller()
     serial_number = isocs.serial_number(wb)
     model = isocs.model_number(wb)
-    
-    measurement_sheet = utilities.sheet_from_name(wb, 'Measurements')
-    
+
+    measurement_sheet = isocs.sheet_from_name(wb, 'Measurements')
+
     if model == 'Generic':
         extract_generic(measurement_sheet, serial_number)
     else:
         pass
-        
-             
+
+
 # This code is used for debugging
 if __name__ == '__main__':
     # Expects the Excel file next to this source file, adjust accordingly.
-    xw.Book('SN#####_v5_0_0.xlsm').set_mock_caller()
+    xw.Book('SN#####_v5_6_2.xlsm').set_mock_caller()
     main()
 
