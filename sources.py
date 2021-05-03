@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+#  -*- coding: utf-8 -*-
 """
 Created on Wed Oct  2 14:21:49 2019
 
@@ -1152,7 +1152,7 @@ class DF(Source):
 
         """
         text = ['C Source surfaces\n',
-                '201  PZ -0.0001 $ Filter Paper - bottom of plastic spacer\n',
+                f'201  PZ -0.0001 $ Filter Paper - bottom of plastic spacer\n',
                 f'202  PZ -{self.bottom_spacer_thickness} $ Filter Paper - spacer-air boundary\n',
                 f'203  PZ -{self.bottom_spacer_thickness + self.void_thickness} $ Filter Paper - air-more spacer boundary\n',
                 f'204  PZ -{self.bottom_spacer_thickness + self.void_thickness + self.top_spacer_thickness} $ Filter Paper - far side of spacer\n',
@@ -2066,6 +2066,619 @@ class PointSource(Source):
 
         """
         return 1.2e-12
+
+class DoubleSmallWE(Source):
+    def __init__(self, energy, counter, nps, well_bottom, inner_radius=0.4875,
+                 outer_radius=0.5875, fill_height=1.5019, cylinder_height=5,
+                 cylinder_radius=0.25, sphere1_center=0.45, sphere2_center=0.55, sphere_radius=0.05):
+        """
+        Parameters
+        ----------
+        energy : float
+            Emission energy.
+        counter : Integer
+            Source counter.
+        nps : float
+            Number of particles in MCNP.
+        well_bottom : float
+            The reference point of the endcap well bottom.
+
+
+        """
+        self.sphere_radius = sphere_radius
+        self.sphere2_center = sphere2_center
+        self.sphere1_center = sphere1_center
+        self.cylinder_radius = cylinder_radius
+        self.cylinder_height = cylinder_height
+        self.well_bottom = well_bottom
+        self.inner_radius = inner_radius
+        self.outer_radius = outer_radius
+        self.fill_height = fill_height
+        super().__init__(energy, counter, nps, well_source=True)
+        self.type = 'WE'
+        #TODO: Look up these values
+        self.marker = 5
+        self.FColor = 23
+        self.BColor = 23
+        if energy < 25:
+            self.geometry_error = 0.045
+        elif energy < 30:
+            self.geometry_error = 0.030
+        else:
+            self.geometry_error = 0.025
+
+
+    def cells(self, detector, electrontrack):
+        """
+        The cells describing the source in MCNP.
+
+        Parameters
+        ----------
+        detector : Detector
+            The detector that the source is used with.
+        electrontrack : bool
+            If true electrontracking will be supported, if False electron
+            tracking will not be supported
+
+        Returns
+        -------
+        text : List
+            A list of the cells describing the source.
+
+        """
+        text = ['C Source cells\n',
+               f'201   28 -0.91 (-201 202 203)  {detector.importance(electrontrack)} $ Source Matrix\n',
+               f'202   29 -1.15  -72  {detector.importance(electrontrack)} $ Source1\n',
+               f'203   29 -1.15  -73 {detector.importance(electrontrack)} $ Source2\n'
+                ]
+        return text
+
+    def cell_numbers(self):
+        """
+        The cell numbers with # infront of them so that MCNP knows
+        to exclude the cells.
+
+        Returns
+        -------
+        str
+            The cell numbers with # in front of them.
+
+        """
+        return '#201 #202 #203'
+
+    def material_numbers(self):
+        """
+        A list of material numbers used in MCNP for the source.
+
+        Returns
+        -------
+        list
+            The MCNP material numbers.
+
+        """
+        return [28, 29]
+
+    def surfaces(self):
+        """
+        The MCNP surfaces used to describe the source.
+
+        Returns
+        -------
+        List
+            A list of strings of surfaces.
+
+        """
+        text = ['C Source surfaces\n',
+                f'201  RCC 0 0 {self.well_bottom - self.cylinder_height} 0 0 {self.cylinder_height} {self.cylinder_radius} $ Source Matrix \n',
+                f'202  SZ {self.well_bottom - self.sphere1_center} {self.sphere_radius}  $ Source 1 \n',
+                f'203  SZ {self.well_bottom - self.sphere2_center} {self.sphere_radius}  $ Source 2',
+                ]
+
+        return text
+
+    def max_radius(self):
+        return 50
+
+    def air_density(self):
+        """
+        The density of the air for the source.
+
+        Returns
+        -------
+        float
+            0.0012.
+
+        """
+        return 0.0012
+
+    def _xyz(self):
+        """
+        The cartesian coordinates of the source reference point
+
+        Returns
+        -------
+        x : float
+            The x coordinate.
+        y : float
+            The y coordinate.
+        z : float
+            The z coordinate.
+
+        """
+
+        x = 0.0
+        y = 0.0
+        z = self.well_bottom - self.sphere1_center
+        return x, y, z
+
+    def _axs(self):
+        """
+        The axs card in MCNP.
+
+        Returns
+        -------
+        str
+            The axs card in MCNP.
+
+        """
+        return '       AXS=0 0 1\n'
+
+    def _ext(self):
+        """
+        The ext card in MCNP.
+
+        Returns
+        -------
+        str
+            The ext card in MCNP.
+
+        """
+        return '       EXT=D2\n'
+
+    def _rad(self):
+        """
+        The rad card in MCNP
+
+        Returns
+        -------
+        str
+            The rad card in MCNP.
+
+        """
+        return '       RAD=D1\n'
+
+
+    def _s2(self):
+        """
+        The si2 card in MCNP
+
+        Source extension
+
+        Returns
+        -------
+        str
+            The si2 card in MCNP.
+
+        """
+        return f'SI2    0 1.6\nSP2    -21 0\n'
+
+
+    def _s3(self):
+        """
+        Not used for the well source
+
+        Returns
+        -------
+        str
+            Empty string.
+
+        """
+        return ''
+
+    def _cell_card(self):
+        return '       CEL=202\n'
+
+    def _vec(self, detector, full_detector):
+        """
+        The vec card for the MCNP source.
+
+        Parameters
+        ----------
+        detector : Detector
+            The detector that the source is used with.
+        full_detector : bool, optional
+            If True the directional bias algorithm includes the entire detector, if False only the
+            crystal is included in the directional bias. The default is True.
+
+        Returns
+        -------
+        str
+            Empty string.
+
+        """
+        return ''
+
+    def _dir(self):
+        """
+        The DIR card for the MCNP source
+
+        Returns
+        -------
+        str
+            Empty string.
+
+        """
+        return ''
+
+    def weight(self, detector, full_detector=True):
+        """
+        The well source can emit photons in all directions. Therefore the
+        weight is always 1.
+
+        Parameters
+        ----------
+        detector : Detector
+            The detector that the source is used with.
+        full_detector : bool, optional
+            If True the directional bias algorithm includes the entire detector, if False only the
+            crystal is included in the directional bias. The default is True.
+
+        Returns
+        -------
+        weight : float
+            1.0
+
+        """
+
+        return 1.0
+
+    def _source_corners(self):
+        """
+        The corners of the source in cartesian coordinates.
+        Used for the directional bias algorithm.
+
+        Returns
+        -------
+        corners : List
+            List of np.arrays of the corners of the source.
+
+        """
+        return []
+
+    def transformation(self):
+        """
+        The transformation card in MCNP.
+
+        Returns
+        -------
+        text : List
+            The transformation card in MCNP.
+
+        """
+        return ''
+    def _s1(self, detector, full_detector):
+        """
+        The well detector uses the s1 distribution for the source extension
+
+        Parameters
+        ----------
+        detector : Detector
+            The detector that the source is used with.
+        full_detector : bool, optional
+            If True the directional bias algorithm includes the entire detector, if False only the
+            crystal is included in the directional bias. The default is True.
+
+        Returns
+        -------
+        str
+            The source extension
+
+        """
+        return 'SI1    0 0.4875\nSP1    -21 1\n'
+
+class SmallWE(Source):
+    def __init__(self, energy, counter, nps, well_bottom, cylinder_height=5,
+                 cylinder_radius=0.25, sphere_center=0.50, sphere_radius=0.05):
+        """
+        Parameters
+        ----------
+        energy : float
+            Emission energy.
+        counter : Integer
+            Source counter.
+        nps : float
+            Number of particles in MCNP.
+        well_bottom : float
+            The reference point of the endcap well bottom.
+
+
+        """
+        self.sphere_radius = sphere_radius
+        self.sphere_center = sphere_center
+        self.cylinder_radius = cylinder_radius
+        self.cylinder_height = cylinder_height
+        self.well_bottom = well_bottom
+        super().__init__(energy, counter, nps, well_source=True)
+        self.type = 'WE'
+        #TODO: Look up these values
+        self.marker = 5
+        self.FColor = 23
+        self.BColor = 23
+        if energy < 25:
+            self.geometry_error = 0.045
+        elif energy < 30:
+            self.geometry_error = 0.030
+        else:
+            self.geometry_error = 0.025
+
+
+    def cells(self, detector, electrontrack):
+        """
+        The cells describing the source in MCNP.
+
+        Parameters
+        ----------
+        detector : Detector
+            The detector that the source is used with.
+        electrontrack : bool
+            If true electrontracking will be supported, if False electron
+            tracking will not be supported
+
+        Returns
+        -------
+        text : List
+            A list of the cells describing the source.
+
+        """
+        text = ['C Source cells\n',
+               f'201   28 -0.91 (-201 202 203 -6)  {detector.importance(electrontrack)} $ Source Matrix\n',
+               f'202   29 -1.15  -202  {detector.importance(electrontrack)} $ Source\n',
+                ]
+        return text
+
+    def cell_numbers(self):
+        """
+        The cell numbers with # infront of them so that MCNP knows
+        to exclude the cells.
+
+        Returns
+        -------
+        str
+            The cell numbers with # in front of them.
+
+        """
+        return '#201 #202'
+
+    def material_numbers(self):
+        """
+        A list of material numbers used in MCNP for the source.
+
+        Returns
+        -------
+        list
+            The MCNP material numbers.
+
+        """
+        return [28, 29]
+
+    def surfaces(self):
+        """
+        The MCNP surfaces used to describe the source.
+
+        Returns
+        -------
+        List
+            A list of strings of surfaces.
+
+        """
+        text = ['C Source surfaces\n',
+                f'201  CZ {self.cylinder_radius} $ Source Matrix Cylinder Radius \n',
+                f'202  SZ {self.well_bottom - self.sphere_center} {self.sphere_radius}  $ Source \n',
+                f'203  PZ {self.well_bottom - self.cylinder_height}  $ Source Matrix Cylinder Bottom \n'
+                ]
+
+        return text
+
+    def max_radius(self):
+        return 50
+
+    def air_density(self):
+        """
+        The density of the air for the source.
+
+        Returns
+        -------
+        float
+            0.0012.
+
+        """
+        return 0.0012
+
+    def _xyz(self):
+        """
+        The cartesian coordinates of the source reference point
+
+        Returns
+        -------
+        x : float
+            The x coordinate.
+        y : float
+            The y coordinate.
+        z : float
+            The z coordinate.
+
+        """
+
+        x = 0.0
+        y = 0.0
+        z = self.well_bottom - self.sphere_center
+        return x, y, z
+
+    def _axs(self):
+        """
+        The axs card in MCNP.
+
+        Returns
+        -------
+        str
+            The axs card in MCNP.
+
+        """
+        return '       AXS=0 0 1\n'
+
+    def _ext(self):
+        """
+        The ext card in MCNP.
+
+        Returns
+        -------
+        str
+            The ext card in MCNP.
+
+        """
+        return ''
+
+    def _rad(self):
+        """
+        The rad card in MCNP
+
+        Returns
+        -------
+        str
+            The rad card in MCNP.
+
+        """
+        return '       RAD=D1\n'
+
+
+    def _s2(self):
+        """
+        The si2 card in MCNP
+
+        Source extension
+
+        Returns
+        -------
+        str
+            The si2 card in MCNP.
+
+        """
+        return f''
+
+
+    def _s3(self):
+        """
+        Not used for the well source
+
+        Returns
+        -------
+        str
+            Empty string.
+
+        """
+        return ''
+
+    def _cell_card(self):
+        return '       CEL=202\n'
+
+    def _vec(self, detector, full_detector):
+        """
+        The vec card for the MCNP source.
+
+        Parameters
+        ----------
+        detector : Detector
+            The detector that the source is used with.
+        full_detector : bool, optional
+            If True the directional bias algorithm includes the entire detector, if False only the
+            crystal is included in the directional bias. The default is True.
+
+        Returns
+        -------
+        str
+            Empty string.
+
+        """
+        return ''
+
+    def _dir(self):
+        """
+        The DIR card for the MCNP source
+
+        Returns
+        -------
+        str
+            Empty string.
+
+        """
+        return ''
+
+    def weight(self, detector, full_detector=True):
+        """
+        The well source can emit photons in all directions. Therefore the
+        weight is always 1.
+
+        Parameters
+        ----------
+        detector : Detector
+            The detector that the source is used with.
+        full_detector : bool, optional
+            If True the directional bias algorithm includes the entire detector, if False only the
+            crystal is included in the directional bias. The default is True.
+
+        Returns
+        -------
+        weight : float
+            1.0
+
+        """
+
+        return 1.0
+
+    def _source_corners(self):
+        """
+        The corners of the source in cartesian coordinates.
+        Used for the directional bias algorithm.
+
+        Returns
+        -------
+        corners : List
+            List of np.arrays of the corners of the source.
+
+        """
+        return []
+
+    def transformation(self):
+        """
+        The transformation card in MCNP.
+
+        Returns
+        -------
+        text : List
+            The transformation card in MCNP.
+
+        """
+        return ''
+    def _s1(self, detector, full_detector):
+        """
+        The well detector uses the s1 distribution for the source extension
+
+        Parameters
+        ----------
+        detector : Detector
+            The detector that the source is used with.
+        full_detector : bool, optional
+            If True the directional bias algorithm includes the entire detector, if False only the
+            crystal is included in the directional bias. The default is True.
+
+        Returns
+        -------
+        str
+            The source extension
+
+        """
+        return 'SI1    0 0.05\nSP1    -21 2\n'
+    
 
 # Dictionary that maps the names on the ISOCS spreadsheet to
 # source classes.
