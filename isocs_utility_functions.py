@@ -90,7 +90,28 @@ def __set_reference(xl, reference, value, sheet_name):
         sheet.range(reference).value = value
     else:
         xl.range(reference).value = value   
-    
+
+
+def well_source_number(xl):
+    """
+    Read the well source ID number from the workbook or sheet. Always use this function
+    when accessing the well source ID number from the ISOCS excel spreadsheet.
+
+    Parameters
+    ----------
+    xl : xl.Book or Sheet
+        The workbook or sheet that contains the well source ID number.
+
+    Returns
+    -------
+    string
+        The well source ID number.
+
+    """
+    reference = 'C36'
+    return __read_reference(xl, reference)    
+
+
 def serial_number(xl):
     """
     Read the serial number from the workbook or sheet. Always use this function
@@ -109,6 +130,7 @@ def serial_number(xl):
     """
     reference = 'C14'
     return __read_reference(xl, reference)
+
 
 def model_number(xl):
     """

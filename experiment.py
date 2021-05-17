@@ -15,7 +15,7 @@ import shutil
 import tkinter as tk
 from tkinter import ttk
 import subprocess
-from sources import ZeroD, NinetyD, OneThirtyFiveD, DC, DF, DR, FortyFiveD, PointSource, WE
+from sources import ZeroD, NinetyD, OneThirtyFiveD, DC, DF, DR, FortyFiveD, PointSource, WE, SmallWE
 import isocs_utility_functions as utilities
 from detector import AegisBEGe, AegisCoax, Generic, GCW
 import mcnp
@@ -383,7 +383,7 @@ class Iteration(Experiment):
                    electrontrack=electrontrack, debug=debug,
                    full_detector=full_detector, customer=customer, low_energy_validation=detector.low_energy_validation)
 
-    def run(self, iteration_sheet, standard_sheet):
+    def run(self, iteration_sheet, standard_sheet, initialization_sheet):
         """
         Run an iteration and populate the results on the iteration sheet
 
@@ -416,6 +416,7 @@ class Iteration(Experiment):
         queued = []
         completed = {}
         sample_created = set()
+        well_source_number = utilities.well_source_number(initialization_sheet)
 
         # create the sources that is used for the iteration
         for geometry, energy in zip(geometry_range, energy_range):
@@ -435,7 +436,10 @@ class Iteration(Experiment):
             elif '45D' == geometry.value:
                 temp = FortyFiveD(float(energy.value), counter, self.defaulthist, self.detector.dimensions["sou_pt_arm"], self.detector.dimensions["sou_pt_pivot"])
             elif 'WE' == geometry.value:
-                temp = WE(float(energy.value), counter, self.defaulthist, self.detector.dimensions['ec_well_depth'])
+                if well_source_number == '21-05C':
+                     temp = SmallWE(float(energy.value), counter, self.defaulthist, self.detector.dimensions['ec_well_depth'])
+                else:
+                     temp = WE(float(energy.value), counter, self.defaulthist, self.detector.dimensions['ec_well_depth'])
 
             if temp is not None:
                 queued.append(temp)

@@ -344,15 +344,25 @@ class Detector(ABC):
                 '      7000 0.5     $    \n',
                 'M23   49000 1.0     $ Indium 7.31 g/cc \n',
                 'M24   22000 1.0     $ Titanium 4.506 g/cc \n',
-                'M25   3000 -0.0081  $ CLLBC 4.08 g/cm3 \n',
-                '      17000 -0.0341 \n',
-                '      35000 -0.4842 \n',
-                '      55000 -0.311  \n',
-                '      57000 -0.1626  \n'
-                'M26   57000 1  $ LaBr3 5.08 g/cm3 \n',
-                '      35000 3 \n',
-                'M27   14000 1  $ SiO2 2.65 g/cm3 \n',
-                '      8000 2 \n',
+                # MCNP-4C doesn't run when too many materials are defined
+				# I had to comment out these three materials
+				# 'M25   3000 -0.0081  $ CLLBC 4.08 g/cm3 \n',
+                # '      17000 -0.0341 \n',
+                # '      35000 -0.4842 \n',
+                # '      55000 -0.311  \n',
+                # '      57000 -0.1626  \n'
+                # 'M26   57000 1  $ LaBr3 5.08 g/cm3 \n',
+                # '      35000 3 \n',
+                # 'M27   14000 1  $ SiO2 2.65 g/cm3 \n',
+                # '      8000 2 \n'
+                'M28   6000 -0.870  $ Source Matrix 1.1 g/cm3 \n',
+                '      8000 -0.098 \n',
+                '      7000 -0.032 \n',
+                'M29   6000 -0.688  $ Ion exchange bead \n',
+                '      8000 -0.174 \n',
+                '      11000 -0.077 \n',
+                '      16000 -0.061 \n',
+                '      20000 -0.001 \n',
                 ]
         return text
 
@@ -2748,6 +2758,8 @@ class MCNPMaterialLibrary:
                           'cllbc':MCNPMaterial(25, 4.08, 'LI:0.81%CL:3.41%BR:48.42%CS:31.10%LA:16.26%[CLLBC]', "CLLBC"),
                           'labr':MCNPMaterial(26, 5.08, 'BR:63.31%LA:36.69%[LABR]', "LABR"),
                           'sio':MCNPMaterial(27, 2.65, 'SI:46.75%O:53.26%[SIO]', "SIO"),
+                          'matrix':MCNPMaterial(28, 1.1, 'C:87.0%O:9.8%N:3.2%[MATRIX]', "MATRIX"),
+                          'ion_bead':MCNPMaterial(29, 1.27, 'C:68.8%O:17.4%NA:7.7%S:6.1%CA:0.1%[MATRIX]', "MATRIX"),
                           }
 
     def material(self, name):

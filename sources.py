@@ -2524,7 +2524,7 @@ class SmallWE(Source):
             The axs card in MCNP.
 
         """
-        return '       AXS=0 0 1\n'
+        return ''
 
     def _ext(self):
         """

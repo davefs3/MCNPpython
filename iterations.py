@@ -24,9 +24,10 @@ def main():
     config_sheet = utilities.sheet_from_name(wb, 'Current CFG')
     iteration_sheet = utilities.sheet_from_name(wb, 'Iterations')
     standard_sheet = utilities.sheet_from_name(wb, 'StandardCFGs')
+    initialization_sheet = utilities.sheet_from_name(wb, 'Initialization')
     low_energy_validation = utilities.low_energy_validation(wb)
     experiment = Iteration.from_config_sheet(config_sheet, os.path.dirname(wb.fullname), low_energy_validation)
-    experiment.run(iteration_sheet, standard_sheet)
+    experiment.run(iteration_sheet,standard_sheet, initialization_sheet)
 
 
 def clear_initialize():
