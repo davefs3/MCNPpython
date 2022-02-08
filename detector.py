@@ -841,7 +841,7 @@ class Aegis(Detector, ABC):
             text.append(f'4    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])}  1 -4 -7 {self.importance(electrontrack)}  $ End cap front\n')
 
         text.append(f'5    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])} 4 -8 6 -7 {self.importance(electrontrack)}  $ Side of End cap\n')
-        text.append(f'6    {mat_lib.number(self.dimensions["ec_back_mat"])} -{mat_lib.density(self.dimensions["ec_back_mat"])} 8 -9 -7 #69 #70 {self.importance(electrontrack)}  $ Back of End cap\n')
+        text.append(f'6    {mat_lib.number(self.dimensions["ec_back_mat"])} -{mat_lib.density(self.dimensions["ec_back_mat"])} 8 -9 -7 #69 #70 #100 #130 {self.importance(electrontrack)}  $ Back of End cap\n')
         text.append(f'11   {mat_lib.number("ge")} -{mat_lib.density("ge")} 11 -12 -18 {self.importance(electrontrack)}  $ Front dead layer\n')
         text.append(f'12   {mat_lib.number("ge")} -{mat_lib.density("ge")} 15 -14 -13 -18 12 #36 #37 {self.importance(electrontrack)} $ Side dead layer\n')
         text.append(f'14   {mat_lib.number("ge")} -{mat_lib.density("ge")} 35 -15 16 -13 {self.importance(electrontrack)} $ Back dead layer\n')
