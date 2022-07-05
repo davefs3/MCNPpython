@@ -455,14 +455,14 @@ class Iteration(Experiment):
 
         # set the inqueue outqueue folders
         if self.queue.lower() == 'alpha':
-            inque_folder = r'\\mer-s-nas1\managerA_Local\InQueue'
-            outque_folder = r'\\mer-s-nas1\managerA_Local\OutQueue'
+            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerA_Local\InQueue'
+            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerA_Local\OutQueue'
         elif self.queue.lower() == 'bravo':
-            inque_folder = r'\\mer-s-nas1\managerB_Local\InQueue'
-            outque_folder = r'\\mer-s-nas1\managerB_Local\OutQueue'
+            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerB_Local\InQueue'
+            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerB_Local\OutQueue'
         elif self.queue.lower() == 'charlie':
-            inque_folder = r'\\mer-s-nas1\managerC_Local\InQueue'
-            outque_folder = r'\\mer-s-nas1\managerC_Local\OutQueue'
+            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\InQueue'
+            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\OutQueue'
         else:
             ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.interation_queue}', 'Unknown queue', 0)
             return
@@ -840,14 +840,14 @@ class Characterization(Experiment):
 
         # Set the queue folders
         if self.queue.lower() == 'alpha':
-            inque_folder = r'\\mer-s-nas1\managerA_Local\InQueue'
-            outque_folder = r'\\mer-s-nas1\managerA_Local\OutQueue'
+            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerA_Local\InQueue'
+            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerA_Local\OutQueue'
         elif self.queue.lower() == 'bravo':
-            inque_folder = r'\\mer-s-nas1\managerB_Local\InQueue'
-            outque_folder = r'\\mer-s-nas1\managerB_Local\OutQueue'
+            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerB_Local\InQueue'
+            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerB_Local\OutQueue'
         elif self.queue.lower() == 'charlie':
-            inque_folder = r'\\mer-s-nas1\managerC_Local\InQueue'
-            outque_folder = r'\\mer-s-nas1\managerC_Local\OutQueue'
+            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\InQueue'
+            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\OutQueue'
         else:
             ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.queue}', 'Unknown queue', 0)
             return
