@@ -32,5 +32,5 @@ def main():
 
 if __name__ == '__main__':
     # Expects the Excel file next to this source file, adjust accordingly.
-    xw.Book('SNB20231_v5_3.xlsm').set_mock_caller()
+    xw.Book('SN1730_v5_6_20_b.xlsm').set_mock_caller()
     main()

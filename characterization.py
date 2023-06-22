@@ -70,8 +70,8 @@ def clear_initialize():
 # This code is used for debugging
 if __name__ == '__main__':
     # Expects the Excel file next to this source file, adjust accordingly.
-    xw.Book('SNB20231_v5_3.xlsm').set_mock_caller()
+    xw.Book('SN1730_v5_6_11.xlsm').set_mock_caller()
     #xw.Book(r'P:\ISOCSProduction\Det_2019\R4_87677\SNR4_v5_0_0.xlsm').set_mock_caller()
-    #make_par()
+    make_par()
     #clear_initialize()
-    loop()
+    #loop()

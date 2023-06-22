@@ -2378,7 +2378,7 @@ class DoubleSmallWE(Source):
 
 class SmallWE(Source):
     def __init__(self, energy, counter, nps, well_bottom, cylinder_height=5,
-                 outer_cylinder_radius=0.275, inner_cylinder_radius=0.2, sphere_center=0.60, sphere_radius=0.05):
+                 cylinder_radius=0.25, sphere_center=0.50, sphere_radius=0.05):
         """
         Parameters
         ----------
@@ -2395,8 +2395,7 @@ class SmallWE(Source):
         """
         self.sphere_radius = sphere_radius
         self.sphere_center = sphere_center
-        self.outer_cylinder_radius = outer_cylinder_radius
-        self.inner_cylinder_radius = inner_cylinder_radius
+        self.cylinder_radius = cylinder_radius
         self.cylinder_height = cylinder_height
         self.well_bottom = well_bottom
         super().__init__(energy, counter, nps, well_source=True)
@@ -2432,9 +2431,8 @@ class SmallWE(Source):
 
         """
         text = ['C Source cells\n',
-               f'201  28 -1.1 (-201 202 203 204 -6)  IMP:P=1 $ Source Matrix\n',
-               f'202  29 -1.27 -202  IMP:P=1 $ Source\n',
-               f'203  29 -1.27 (202 203 -204 -6)  IMP:P=1 $ Source Matrix\n',
+               f'201   28 -0.91 (-201 202 203 -6)  {detector.importance(electrontrack)} $ Source Matrix\n',
+               f'202   29 -1.15  -202  {detector.importance(electrontrack)} $ Source\n',
                 ]
         return text
 
@@ -2449,7 +2447,7 @@ class SmallWE(Source):
             The cell numbers with # in front of them.
 
         """
-        return '#201 #202 #203'
+        return '#201 #202'
 
     def material_numbers(self):
         """
@@ -2474,10 +2472,9 @@ class SmallWE(Source):
 
         """
         text = ['C Source surfaces\n',
-                f'201  CZ {self.outer_cylinder_radius} $ Source Matrix Outer Cylinder Radius \n',
+                f'201  CZ {self.cylinder_radius} $ Source Matrix Cylinder Radius \n',
                 f'202  SZ {self.well_bottom - self.sphere_center} {self.sphere_radius}  $ Source \n',
-                f'203  PZ {self.well_bottom - self.cylinder_height}  $ Source Matrix Cylinder Bottom \n',
-                f'204  CZ {self.outer_cylinder_radius} $ Source Matrix Outer Cylinder Radius \n',
+                f'203  PZ {self.well_bottom - self.cylinder_height}  $ Source Matrix Cylinder Bottom \n'
                 ]
 
         return text

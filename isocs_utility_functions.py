@@ -1,5 +1,6 @@
 import xlwings as xw
 import collections
+import ctypes
 
 # Module to read parameters from the initialization page
 
@@ -611,6 +612,457 @@ def find_standard_detector_values(header, model_number, sheet):
         standard_values[name.value] = (value.value, description.value)
     
     return standard_values
+
+def find_endcap_values(standard_values, endcap_model, sheet):
+    """
+    Find the default dimensions for an endcap on the standard cfg sheet.
+
+    Parameters
+    ----------.
+    endcap_model : string
+        The model number of the detector.
+    sheet : Sheet
+        The standard config sheet.
+
+    Returns
+    -------
+    standard_values : OrderedDict
+        An ordered dictionary where the dimension keyword is the key and the value of
+        the dimension is the value.
+
+    """
+    if (len(endcap_model) < 7):
+        ctypes.windll.user32.MessageBoxW(0, 'Endcap model number not supported, default values used', 'Unsupported endcap model number', 0)
+        return       
+    
+    if endcap_model[0:7] == "102001-":
+        ec_code = "102001-DL"
+        ec_params = endcap_model[7:9]
+        ec_vars = "DL"
+    elif endcap_model[0:6] == "100510":
+        ec_code = "100510DL"
+        ec_params = endcap_model[6:8]
+        ec_vars = "DL"
+    elif endcap_model[0:6] == "901605":
+        ec_code = "901605LAMW"
+        ec_params = endcap_model[6:10]
+        ec_vars = "LAMW"
+    elif endcap_model[0:6] == "901606":
+        ec_code = "901606DLMW"
+        ec_params = endcap_model[6:10]
+        ec_vars = "DLMW"
+    elif endcap_model[0:5] == "70758":
+        ec_code = "70758DD"
+        ec_params = endcap_model[5:7]
+        ec_vars = "DD"        
+    elif endcap_model[0:6] == "902206":
+        ec_code = "902206DLWM"
+        ec_params = endcap_model[6:10]
+        ec_vars = "DLWM"
+    elif endcap_model[0:6] == "708956":
+        ec_code = "708956D"
+        ec_params = endcap_model[6:7]
+        ec_vars = "D"
+    else:
+        ctypes.windll.user32.MessageBoxW(0, 'Endcap model number not supported, default values used', 'Unsupported endcap model number', 0)
+        return  
+
+    var_number = len(ec_vars)
+    if "DD" in ec_vars:
+        var_number -= 1
+    
+    
+    last_row = sheet.range('B' + str(sheet.cells.last_cell.row)).end('up').row
+    B_cells = sheet.range('B1:B'+ str(last_row))   
+    first_row = -1
+    for cell in B_cells:
+        if cell.value == ec_code:
+            first_row = cell.row
+            break
+    if first_row == -1:
+        ctypes.windll.user32.MessageBoxW(0, 'Error, enter endcap parameters manually', 'Error', 0)
+        return 
+    second_row = first_row + 1
+    A_cells = sheet.range('A' + str(second_row) + ':A'+ str(last_row))
+    last_row = -1
+    for cell in A_cells:
+        if cell.value == "TheModel" or cell.value == None:
+            last_row = cell.row - 1
+            break
+    if last_row == -1:
+        ctypes.windll.user32.MessageBoxW(0, 'Error, enter endcap parameters manually', 'Error', 0)
+        return
+    
+    doubleFlag = False
+    paramFlag = False
+    first_row += 1
+    
+    for i in range(len(ec_vars)):
+        if doubleFlag:
+            doubleFlag = False
+            continue
+            
+        char = ec_vars[i]
+        digit = ec_params[i]
+        if char != sheet.range((first_row,1)).value:
+            if len(ec_vars) < i+2:
+                ctypes.windll.user32.MessageBoxW(0, 'Error, enter endcap parameters manually', 'Error', 0)
+                return 
+            else:
+                char = ec_vars[i:i+2]
+                digit = ec_params[i:i+2]
+                doubleFlag = True
+        if char != sheet.range((first_row,1)).value:
+            ctypes.windll.user32.MessageBoxW(0, 'Error, enter endcap parameters manually', 'Error', 0)
+            return 
+        
+        last_column = sheet.range((first_row, 1), (first_row,sheet.cells.last_cell.column)).end('right').column
+        cells = sheet.range((first_row, 2), (first_row, last_column))
+        for cell in cells:
+            cval = cell.value
+            if type(cval) == float:
+                cval = int(cval)
+            if type(cval) == int:
+                cval = str(cval)
+            
+            if cval == digit:
+                value_column = cell.column
+                paramFlag = True
+                break
+        
+        if paramFlag == False:
+            ctypes.windll.user32.MessageBoxW(0, 'Error, enter endcap parameters manually', 'Error', 0)
+            return 
+        
+        
+        endFlag = False
+        breakFlag = False
+                    
+        if (i != len(ec_vars) - 1 and doubleFlag == False) or (i != len(ec_vars) -2 and doubleFlag): 
+            A_cells = sheet.range((first_row+1, 1), (last_row+1, 1))
+            for cell in A_cells:
+                if cell.value not in standard_values.keys():
+                    end_row = cell.row
+                    endFlag = True
+                    break
+            if endFlag == False:
+                ctypes.windll.user32.MessageBoxW(0, 'Error, enter endcap parameters manually', 'Error', 0)
+                return 
+            name_range = sheet.range((first_row + 1, 1), (end_row-1, 1))
+            value_range = sheet.range((first_row + 1, value_column), (end_row-1, value_column))
+            for name, value in zip(name_range, value_range):
+                descriptor = standard_values[name.value][1]
+                standard_values[name.value] = (value.value, descriptor)
+                
+            first_row = end_row 
+            
+        if (i == len(ec_vars) - 1 and doubleFlag == False) or (i == len(ec_vars) -2 and doubleFlag):
+            C_cells = sheet.range((first_row+1, 3), (last_row+1, 3))
+            for cell in C_cells:
+                if cell.value is None:
+                    break_row = cell.row
+                    breakFlag = True
+                    break
+            if breakFlag == False:
+                ctypes.windll.user32.MessageBoxW(0, 'Error, enter endcap parameters manually', 'Error', 0)
+                return 
+            name_range = sheet.range((first_row + 1, 1), (break_row-1, 1))
+            value_range = sheet.range((first_row + 1, value_column), (break_row-1, value_column))
+            for name, value in zip(name_range, value_range):
+                descriptor = standard_values[name.value][1]
+                standard_values[name.value] = (value.value, descriptor)
+            
+            A_cells = sheet.range((break_row, 1), (last_row + 1, 1))
+            for cell in A_cells:
+                if cell.value not in standard_values.keys():
+                    end_row = cell.row
+                    endFlag = True
+                    break
+            if endFlag == False:
+                ctypes.windll.user32.MessageBoxW(0, 'Error, enter endcap parameters manually', 'Error', 0)
+                return     
+            if end_row == break_row:
+                return standard_values
+            else:
+                name_range = sheet.range((break_row, 1), (end_row-1, 1))
+                value_range = sheet.range((break_row, 2), (end_row-1, 2))
+                for name, value in zip(name_range, value_range):
+                    descriptor = standard_values[name.value][1]
+                    standard_values[name.value] = (value.value, descriptor)
+
+    return standard_values
+    
+    
+    
+"""    
+    if ec_code == "102001-DL":
+        d_param = endcap_model[7]
+        l_param = endcap_model[8]
+        d_param_flag = False
+        l_param_flag = False
+        
+        last_column = sheet.range((first_row+1, 1), (first_row+1,sheet.cells.last_cell.column)).end('right').column
+        cells = sheet.range((first_row+1, 2), (first_row+1,last_column))
+        for cell in cells:
+            cval = cell.value
+            if type(cval) == float:
+                cval = int(cval)
+            if type(cval) == int:
+                cval = str(cval)
+            
+            if cval == d_param:
+                value_column = cell.column
+                d_param_flag = True
+                break
+        if d_param_flag == False:
+            raise ValueError('Error, enter endcap parameters manually')
+            return standard_values
+        
+        name_range = sheet.range((first_row + 2, 1))
+        value_range = sheet.range((first_row + 2, value_column))
+        for name, value in zip(name_range, value_range):
+            descriptor = standard_values[name.value][1]
+            standard_values[name.value] = (value.value, descriptor)
+        
+        last_column = sheet.range((first_row+3, 1), (first_row+3,sheet.cells.last_cell.column)).end('right').column
+        cells = sheet.range((first_row+3, 2), (first_row+3,last_column))
+        for cell in cells:
+            cval = cell.value
+            if type(cval) == float:
+                cval = int(cval)
+            if type(cval) == int:
+                cval = str(cval)
+                
+            if cval == l_param:
+                value_column = cell.column
+                l_param_flag = True
+                break
+        if l_param_flag == False:
+            raise ValueError('Error, enter endcap parameters manually')
+            return standard_values
+        
+        name_range = sheet.range((first_row + 4, 1))
+        value_range = sheet.range((first_row + 4, value_column))
+        for name, value in zip(name_range, value_range):
+            descriptor = standard_values[name.value][1]
+            standard_values[name.value] = (value.value, descriptor)
+            
+        name_range = sheet.range((first_row + 5, 1), (last_row, 1))
+        value_range = sheet.range((first_row + 5, 2), (last_row, 2))
+        for name, value in zip(name_range, value_range):
+            descriptor = standard_values[name.value][1]
+            standard_values[name.value] = (value.value, descriptor)
+"""        
+def find_holder_values(standard_values, holder_model, sheet):
+    """
+    Find the default dimensions for a holder on the standard cfg sheet.
+
+    Parameters
+    ----------.
+    holder_model : string
+        The holder model number of the detector.
+    sheet : Sheet
+        The standard config sheet.
+
+    Returns
+    -------
+    standard_values : OrderedDict
+        An ordered dictionary where the dimension keyword is the key and the value of
+        the dimension is the value.
+
+    """
+    if (len(holder_model) < 6):
+        ctypes.windll.user32.MessageBoxW(0, 'Holder model number not supported, default values used', 'Unsupported holder model number', 0)
+        return 
+    if holder_model[0] == "1" and holder_model[2:6] == "1042":
+        h_code = "1Y1042DDL"
+        h_params = holder_model[1] + holder_model[8]
+        h_vars = "YL"
+    elif holder_model[0:6] == "191784":
+        h_code = "191784DLM"
+        h_params = holder_model[6:9]
+        h_vars = "DLM"
+    elif holder_model[0:6] == "707804":
+        h_code = "707804L"
+        h_params = holder_model[6]
+        h_vars = "L"
+    elif holder_model[0:6] == "707941":
+        h_code = "707941L"
+        h_params = holder_model[6]
+        h_vars = "L"
+    elif holder_model[0] == "1" and holder_model[2:6] == "csnv":
+        h_code = "1YcsnvDDL"
+        h_params = holder_model[1] + holder_model[8]
+        h_vars = "YL"        
+    elif holder_model[0] == "2" and holder_model[2:6] == "csnv":
+        h_code = "2YcsnvDDL"
+        h_params = holder_model[1] + holder_model[8]
+        h_vars = "YL"  
+    elif holder_model[0] == "3" and holder_model[2:6] == "csnv":
+        h_code = "3YcsnvDD"
+        h_params = holder_model[1]
+        h_vars = "Y"
+    elif holder_model[0] == "4" and holder_model[2:6] == "csnv":
+        h_code = "4YcsnvDD"
+        h_params = holder_model[1]
+        h_vars = "Y"         
+    elif holder_model[0:6] == "BEcsnv":
+        h_code = "BEcsnvD"
+        h_params = ""
+        h_vars = ""
+    else:
+        ctypes.windll.user32.MessageBoxW(0, 'Endcap model number not supported, default values used', 'Unsupported encap model number', 0)
+        return standard_values  
+
+    
+    last_row = sheet.range('B' + str(sheet.cells.last_cell.row)).end('up').row
+    B_cells = sheet.range('B1:B'+ str(last_row))   
+    first_row = -1
+    for cell in B_cells:
+        if cell.value == h_code:
+            first_row = cell.row
+            break
+    if first_row == -1:
+        ctypes.windll.user32.MessageBoxW(0, 'Error, enter holder parameters manually', 'Error', 0)
+        return 
+    #second_row = first_row + 1
+    A_cells = sheet.range((first_row+1, 1), (last_row+1, 1))
+    last_row = -1
+    for cell in A_cells:
+        if cell.value == "TheModel" or cell.value == None:
+            last_row = cell.row - 1
+            break
+    if last_row == -1:
+        ctypes.windll.user32.MessageBoxW(0, 'Error, enter holder parameters manually', 'Error', 0)
+        return 
+    
+    doubleFlag = False
+    paramFlag = False
+    first_row += 1
+    
+    if h_vars == "":
+        A_cells = sheet.range((first_row, 1), (last_row + 1, 1))
+        for cell in A_cells:
+            if cell.value not in standard_values.keys():
+                end_row = cell.row
+                endFlag = True
+                break
+        if endFlag == False:
+            ctypes.windll.user32.MessageBoxW(0, 'Error, enter holder parameters manually', 'Error', 0)
+            return     
+        if end_row == last_row:
+            return standard_values
+        else:
+            name_range = sheet.range((first_row, 1), (end_row-1, 1))
+            value_range = sheet.range((first_row, 2), (end_row-1, 2))
+            for name, value in zip(name_range, value_range):
+                descriptor = standard_values[name.value][1]
+                standard_values[name.value] = (value.value, descriptor)
+            return standard_values
+    
+    if h_code == "707804L" or h_code == "707941L":
+        name_range = sheet.range((first_row, 1))
+        value_range = sheet.range((first_row, 2))
+        for name, value in zip(name_range, value_range):
+            descriptor = standard_values[name.value][1]
+            standard_values[name.value] = (value.value, descriptor)
+        first_row += 1
+    
+    for i in range(len(h_vars)):
+        if doubleFlag:
+            doubleFlag = False
+            continue
+            
+        char = h_vars[i]
+        digit = h_params[i]
+        if char != sheet.range((first_row,1)).value:
+            if len(h_vars) < i+2:
+                ctypes.windll.user32.MessageBoxW(0, 'Error, enter holder parameters manually', 'Error', 0)
+                return 
+            else:
+                char = h_vars[i:i+2]
+                digit = h_params[i:i+2]
+                doubleFlag = True
+        if char != sheet.range((first_row,1)).value:
+            ctypes.windll.user32.MessageBoxW(0, 'Error, enter holder parameters manually', 'Error', 0)
+            return 
+        
+        last_column = sheet.range((first_row, 1), (first_row,sheet.cells.last_cell.column)).end('right').column
+        cells = sheet.range((first_row, 2), (first_row, last_column))
+        for cell in cells:
+            cval = cell.value
+            if type(cval) == float:
+                cval = int(cval)
+            if type(cval) == int:
+                cval = str(cval)
+            
+            if cval == digit:
+                value_column = cell.column
+                paramFlag = True
+                break
+        
+        if paramFlag == False:
+            ctypes.windll.user32.MessageBoxW(0, 'Error, enter holder parameters manually', 'Error', 0)
+            return
+        
+        
+        endFlag = False
+        breakFlag = False
+                    
+        if (i != len(h_vars) - 1 and doubleFlag == False) or (i != len(h_vars) -2 and doubleFlag): 
+            A_cells = sheet.range((first_row+1, 1), (last_row+1, 1))
+            for cell in A_cells:
+                if cell.value not in standard_values.keys():
+                    end_row = cell.row
+                    endFlag = True
+                    break
+            if endFlag == False:
+                ctypes.windll.user32.MessageBoxW(0, 'Error, enter holder parameters manually', 'Error', 0)
+                return
+            name_range = sheet.range((first_row + 1, 1), (end_row-1, 1))
+            value_range = sheet.range((first_row + 1, value_column), (end_row-1, value_column))
+            for name, value in zip(name_range, value_range):
+                descriptor = standard_values[name.value][1]
+                standard_values[name.value] = (value.value, descriptor)
+                
+            first_row = end_row 
+            
+        if (i == len(h_vars) - 1 and doubleFlag == False) or (i == len(h_vars) -2 and doubleFlag):
+            C_cells = sheet.range((first_row+1, 3), (last_row+1, 3))
+            for cell in C_cells:
+                if cell.value is None:
+                    break_row = cell.row
+                    breakFlag = True
+                    break
+            if breakFlag == False:
+                ctypes.windll.user32.MessageBoxW(0, 'Error, enter holder parameters manually', 'Error', 0)
+                return 
+            name_range = sheet.range((first_row + 1, 1), (break_row-1, 1))
+            value_range = sheet.range((first_row + 1, value_column), (break_row-1, value_column))
+            for name, value in zip(name_range, value_range):
+                descriptor = standard_values[name.value][1]
+                standard_values[name.value] = (value.value, descriptor)
+            
+            A_cells = sheet.range((break_row, 1), (last_row + 1, 1))
+            for cell in A_cells:
+                if cell.value not in standard_values.keys():
+                    end_row = cell.row
+                    endFlag = True
+                    break
+            if endFlag == False:
+                ctypes.windll.user32.MessageBoxW(0, 'Error, enter holder parameters manually', 'Error', 0)
+                return     
+            if end_row == break_row:
+                return standard_values
+            else:
+                name_range = sheet.range((break_row, 1), (end_row-1, 1))
+                value_range = sheet.range((break_row, 2), (end_row-1, 2))
+                for name, value in zip(name_range, value_range):
+                    descriptor = standard_values[name.value][1]
+                    standard_values[name.value] = (value.value, descriptor)
+
+    return standard_values            
+
     
 def range_to_array(xlrange, func):
     """

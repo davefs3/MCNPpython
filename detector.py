@@ -64,10 +64,10 @@ class Detector(ABC):
         self.dimensions = utilities.find_standard_detector_values(self.header, self.short_modelnumber, standard_sheet)
         self.holder_model = utilities.holder_model(init_sheet)
         self.endcap_model = utilities.endcap_model(init_sheet)
-#        if self.holder_model is not '':
-#            holder_dimensions = utilities.find_holder_values(self.holder_model, sheet)
-#        if self.endcap_model is not '':
-#            endcap_dimensions = utilities.find_endcap_values(self.endcap_model, sheet)
+        if self.holder_model is not None:
+            holder_dimensions = utilities.find_holder_values(self.dimensions, self.holder_model, standard_sheet)
+        if self.endcap_model is not None:
+            endcap_dimensions = utilities.find_endcap_values(self.dimensions, self.endcap_model, standard_sheet)
         value = utilities.ec_xtal_dist(init_sheet)
         if value > 0 and 'ec_xtal_dist' in self.dimensions:
             self.dimensions['ec_xtal_dist'] = (value  / 10.0, self.dimensions['ec_xtal_dist'][1])
@@ -223,7 +223,7 @@ class Detector(ABC):
 
         """
         text = ['C World cells\n'
-                f'89   3 -{source.air_density()} -99 #{self.endcap_boundary()} {source.cell_numbers()} {self.importance(electrontrack)} $ AIR SPHERE\n',
+                f'89   3 -{source.air_density()} -99 {self.endcap_boundary()} {source.cell_numbers()} {self.importance(electrontrack)} $ AIR SPHERE\n',
                 f'99   0          99         {self.importance(electrontrack, void=True)}    $ VOID\n'
                 ]
         return text
@@ -725,6 +725,15 @@ class Detector(ABC):
 
         """
         pass
+    
+    @abstractmethod
+    def low_energy_validation(self):
+        """
+        This method should return a detector specific flag if low energy validation
+        is activated
+        
+        """
+        raise NotImplementedError
 
     @abstractmethod
     def validate_dimensions(self):
@@ -841,7 +850,7 @@ class Aegis(Detector, ABC):
             text.append(f'4    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])}  1 -4 -7 {self.importance(electrontrack)}  $ End cap front\n')
 
         text.append(f'5    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])} 4 -8 6 -7 {self.importance(electrontrack)}  $ Side of End cap\n')
-        text.append(f'6    {mat_lib.number(self.dimensions["ec_back_mat"])} -{mat_lib.density(self.dimensions["ec_back_mat"])} 8 -9 -7 #69 #70 #100 #130 {self.importance(electrontrack)}  $ Back of End cap\n')
+        text.append(f'6    {mat_lib.number(self.dimensions["ec_back_mat"])} -{mat_lib.density(self.dimensions["ec_back_mat"])} 8 -9 -7 #69 #70 {self.importance(electrontrack)}  $ Back of End cap\n')
         text.append(f'11   {mat_lib.number("ge")} -{mat_lib.density("ge")} 11 -12 -18 {self.importance(electrontrack)}  $ Front dead layer\n')
         text.append(f'12   {mat_lib.number("ge")} -{mat_lib.density("ge")} 15 -14 -13 -18 12 #36 #37 {self.importance(electrontrack)} $ Side dead layer\n')
         text.append(f'14   {mat_lib.number("ge")} -{mat_lib.density("ge")} 35 -15 16 -13 {self.importance(electrontrack)} $ Back dead layer\n')
@@ -1180,7 +1189,7 @@ class Aegis(Detector, ABC):
             Surfaces that describes the endcap boundary in MCNP.
 
         """
-        return '(1 -9 -7)'
+        return '#(1 -9 -7)'
 
     def holder_thickness(self):
         """
@@ -1282,9 +1291,22 @@ class AegisBEGe(Aegis):
         self.modelnumber = 'AEGIS-BEGE5030'
         self.short_modelnumber = 'AEGIS-BEGE5030'
         self.header = 'AEGIS-BEGE'
-        self.low_energy_validation = True
+#       self.low_energy_validation = True
 
-
+    def low_energy_validation(self):
+        """
+        Sets the low energy validation flag for the Aegis BEGe detector.
+        
+        Returns
+        -------
+        bool
+            True if low energy validation is required, false otherwise.
+            
+        """
+        
+        return True
+    
+    
     def validate_dimensions(self):
         """
         Dimension validation for the Aegis BEGe detector.
@@ -1572,15 +1594,34 @@ class AegisCoax(Aegis):
         super().__init__(serialnumber)
         if crystal_type == 'GC':
             self.modelnumber = 'AEGIS-GC40'
-            self.low_energy_validation = False
+#            self.low_energy_validation = False
             self.short_modelnumber = 'AEGIS-GC40'
         elif crystal_type == 'GX':
             self.modelnumber = 'AEGIS-GX40'
-            self.low_energy_validation = True
+#            self.low_energy_validation = True
             self.short_modelnumber = 'AEGIS-GX40'
         else:
             raise ValueError('Unknown crystal type')
         self.header = 'AEGIS-COAX'
+        self.crystal_type = crystal_type
+        
+    def low_energy_validation(self):
+        """
+        Sets the low energy validation flag for the Aegis BEGe detector.
+        
+        Returns
+        -------
+        bool
+            True if low energy validation is required, false otherwise.
+            
+        """
+        if self.crystal_type == 'GC':
+            return False
+        elif self.crystal_type == 'GX':
+            return True
+        else:
+            raise ValueError('Unknown crystal type')
+            
 
     def validate_dimensions(self):
         """
@@ -1896,8 +1937,20 @@ class GCW(Detector):
         else:
             raise ValueError(f'Unknown model: {model}')
         self.short_modelnumber = short_model
-        self.low_energy_validation = False
+#        self.low_energy_validation = False
 
+    def low_energy_validation(self):
+        """
+        Sets the low energy validation flag for the Aegis BEGe detector.
+        
+        Returns
+        -------
+        bool
+            True if low energy validation is required, false otherwise.
+            
+        """
+        
+        return False
 
     def validate_dimensions(self):
         """
@@ -2209,7 +2262,7 @@ class GCW(Detector):
             Surfaces that describes the endcap boundary in MCNP.
 
         """
-        return '(1 -10 -12)'
+        return '#(1 -10 -12)'
 
     def add_characterization_points(self, filename):
         """
@@ -2435,6 +2488,690 @@ class GCW(Detector):
             det_text.write(f'{self.dimensions["holder_mat"]},{self.dimensions["holder_back"]*10.0:.4g},{mat_lib.density(self.dimensions["holder_mat"])}, #\n')
             det_text.write(f'{ec_back_mat},{self.dimensions["ec_back"]*10.0:.4g},{ec_back_den}\n')
 
+class GSW(Detector):
+    def __init__(self, serialnumber, model):
+        """
+        Class for the GSW traditional well detector. .
+
+        Parameters
+        ----------
+        serialnumber : string
+            The serial number of the detector.
+
+        Returns
+        -------
+        None.
+
+        """
+        super().__init__(serialnumber)
+        self.modelnumber = model
+        self.header = 'WELL'
+        self.short_modelnumber = model.lower()
+        
+
+    def well_shape(self):
+        """
+        This method should determine the shape of the well as to assign appropriate
+        surfaces
+        
+        """
+        if self.dimensions['well_rad_top'] == self.dimensions['well_rad_bottom']:
+            we_shape = "cylinder"
+        elif self.dimensions['well_rad_top'] > self.dimensions['well_rad_bottom']:
+            we_shape = "cone"
+        elif self.dimensions['well_rad_top'] < self.dimensions['well_rad_bottom']:
+            we_shape = "inv_cone"
+        
+        return we_shape
+    
+    def holder_lid_id(self):
+        """
+        This method should determine the inside radius of the holder lid
+        
+        """
+        if  self.modelnumber.lower() == "gsw275l":
+            h_lid_id = 1.55
+        else:
+            h_lid_id = 0.95
+        
+        return h_lid_id
+           
+    
+    def low_energy_validation(self):
+        """ 
+        This method should activate low energy validation for a ceramic well
+        
+        """
+        if 'win_mat' in self.dimensions and self.dimensions['win_mat'][0] == "ceramic":
+            return True
+        else:
+            return False
+    
+#    self.low_energy_validation = False
+   
+    def validate_dimensions(self):
+        """
+        This method should implement detector specific validation of the detector
+        dimensions.
+
+        """
+         # TODO: Add more validation checks.
+        if self.dimensions['xtal_rad'] >= self.dimensions['ec_rad']:
+            return False, 'Crystal radius >= Endcap radius'
+
+        return True, ''
+
+    def holder_thickness(self):
+        """
+        This method should implement detector specific calculation of the holder
+        thickness for the detector.txt file.
+
+        """
+        return self.dimensions['holder_thick']
+
+    def back_dead_layer(self):
+        """
+        This method should implement detector specific calculation of the back
+        deadlayer so that the volume of the crystal is correct, used for the
+        detector.txt file.
+
+        """
+        return self.dimensions['back_dl']
+
+    def dcg_parameters(self):
+        """
+        The GCW specific dcg parameters
+
+        Returns
+        -------
+        text : List
+            list of detector specifc dcg parameters.
+
+        """
+        mat_lib = MCNPMaterialLibrary()
+        text =  ['~ModelNumber GC4020\n',
+                 '\n',
+                 f'xtal_rad {self.dimensions["xtal_rad"]}\n',
+                 f'xtal_len {self.dimensions["xtal_len"]}\n',
+                 f'front_dl {self.dimensions["front_dl"]}\n',
+                 f'side_dl {self.dimensions["side_dl"]}\n',
+                 f'back_dl {self.dimensions["back_dl"]}\n',
+                 f'bevel_rad {self.dimensions["bevel_rad"]}\n',
+                 f'well_depth {self.dimensions["well_depth"]}\n',
+                 f'well_radius {self.dimensions["well_rad_top"]}\n',
+                 #f'well_rad_top {self.dimensions["well_rad_top"]}\n',
+                 #f'well_rad_bottom {self.dimensions["well_rad_bottom"]}\n',                 
+                 f'well_dl {self.dimensions["well_dl_side"]}\n',
+                 f'well_dl_side {self.dimensions["well_dl_side"]}\n',
+                 f'well_dl_bottom {self.dimensions["well_dl_bottom"]}\n',
+                 f'well_cu {0}\n',
+                 f'well_insul {0}\n',               
+                 f'ec_xtal_dist {self.dimensions["ec_xtal_dist"]}\n',
+                 f'ec_rad {self.dimensions["ec_rad"]}\n',
+                 f'ec_len {self.dimensions["ec_len"]}\n',
+                 f'ec_side {self.dimensions["ec_side"]}\n',
+                 f'ec_face {self.dimensions["ec_face"]}\n',
+                 f'ec_back {self.dimensions["ec_back"]}\n',
+                 f'ec_mat {self.dimensions["ec_mat"]}\n',
+                 f'ec_well_depth {self.dimensions["ec_well_depth"]}\n',
+                 f'ec_well_radius {self.dimensions["ec_well_radius"]}\n',
+                 f'ec_well_side {self.dimensions["ec_well_side"]}\n',
+                 f'ec_well_bottom {self.dimensions["ec_well_bottom"]}\n',               
+                 f'win_rad {self.dimensions["win_rad"]}\n',
+                 f'win_mat {self.dimensions["win_mat"]}\n',
+                 f'win_thick {self.dimensions["win_thick"]}\n',
+                 f'xtal_prot {self.dimensions["xtal_prot"]}\n',
+                 f'groove_depth {self.dimensions["groove_depth"]}\n',
+                 f'groove_irad {self.dimensions["groove_irad"]}\n',
+                 f'groove_orad {self.dimensions["groove_orad"]}\n',
+                 f'groove_dl {self.dimensions["groove_dl"]}\n',
+                 f'kludge {self.dimensions["kludge"]}\n',              
+                 f'holder_mat {self.dimensions["holder_mat"]}\n',
+                 f'holder_thick {self.dimensions["holder_thick"]}\n',
+                 f'holder_lipthick {self.dimensions["holder_lipthick"]}\n',
+                 f'holder_lipwid {self.dimensions["holder_lipwid"]}\n',
+                 #f'holder_lippos {self.dimensions["holder_lippos"]}\n',
+                 f'holder_r1pos {self.dimensions["holder_r1pos"]}\n',
+                 f'holder_r1wid {self.dimensions["holder_r1wid"]}\n',
+                 f'holder_r2pos {self.dimensions["holder_r2pos"]}\n',
+                 f'holder_r2wid {self.dimensions["holder_r2wid"]}\n',
+                 f'holder_len {self.dimensions["holder_len"]}\n',
+                 f'holder_back {self.dimensions["holder_back"]}\n',                
+                 f'cup_rad {0}\n',
+                 f'cup_sidethick {0}\n',
+                 f'cup_len {0}\n',
+                 f'cup_backthick {0}\n',                 
+                 f'insul_front {self.dimensions["insul_front"]}\n',
+                 f'insul_f_mat {mat_lib.dcg_name(self.dimensions["insul_f_mat"])}\n',
+                 f'insul_f_den {self.dimensions["insul_f_den"]}\n',
+                 f'insul_side {self.dimensions["insul_side"]}\n',
+                 f'insul_s_mat {mat_lib.dcg_name(self.dimensions["insul_s_mat"])}\n',
+                 f'insul_s_den {self.dimensions["insul_s_den"]}\n',
+                 f'insul_front2 {self.dimensions["insul_front2"]}\n',
+                 f'insul_f2_mat {mat_lib.dcg_name(self.dimensions["insul_f2_mat"])}\n',
+                 f'insul_f2_den {self.dimensions["insul_f2_den"]}\n',
+                 f'insul_side2 {self.dimensions["insul_side2"]}\n',
+                 f'insul_s2_mat {mat_lib.dcg_name(self.dimensions["insul_s2_mat"])}\n',
+                 f'insul_s2_den {self.dimensions["insul_s2_den"]}\n',
+                 f'insul_well {self.dimensions["insul_well"]}\n',
+                 f'insul_w_mat {mat_lib.dcg_name(self.dimensions["insul_w_mat"])}\n',
+                 f'insul_w_den {self.dimensions["insul_w_den"]}\n',
+                 f'insul_well2 {self.dimensions["insul_well"]}\n',
+                 f'insul_w2_mat {mat_lib.dcg_name(self.dimensions["insul_w_mat"])}\n',
+                 f'insul_w2_den {self.dimensions["insul_w_den"]}\n',                
+                 f'falc_hold_side {0}\n',
+                 f'falc_hold_lip_thick {0}\n',
+                 f'falc_hold_lipwid {0}\n',
+                 f'falc_hold_screws {0}\n',                
+                 f'taper_top {self.dimensions["taper_top"]}\n',
+                 f'taper_side {self.dimensions["taper_side"]}\n',
+                 f'taper_dl {self.dimensions["taper_dl"]}\n',                
+                 f'insul_back {self.dimensions["insul_back"]}\n',
+                 f'insul_b_mat {mat_lib.dcg_name(self.dimensions["insul_b_mat"])}\n',
+                 f'insul_b_den {self.dimensions["insul_b_den"]}\n',
+                 f'insul_back2 {self.dimensions["insul_back2"]}\n',
+                 f'insul_b2_mat {mat_lib.dcg_name(self.dimensions["insul_b2_mat"])}\n',
+                 f'insul_b2_den {self.dimensions["insul_b2_den"]}\n'                 
+                 f'sou_pt_arm {self.dimensions["sou_pt_arm"]}\n',
+                 f'sou_pt_pivot {self.dimensions["sou_pt_pivot"]}\n',
+        ]
+        return text
+
+    def surfaces(self):
+        """
+        The surface cards for the GSW detector
+
+        Returns
+        -------
+        text : List
+            A list with the surface cards for the GSW detector.
+
+        """
+
+        # Varibles used to populate the surfaces in the
+        endcap_well_outer_radius = self.dimensions['ec_well_radius'] + self.dimensions['ec_well_side']
+        endcap_well_bottom_bottom = self.dimensions["ec_well_depth"] + self.dimensions["ec_well_bottom"]
+        endcap_inner_radius = self.dimensions['ec_rad'] - self.dimensions['ec_side']
+        endcap_back_inside = self.dimensions['ec_len'] - self.dimensions['ec_back']
+        well_side_insul = endcap_well_outer_radius + self.dimensions['insul_well']
+        well_bottom_insul = endcap_well_bottom_bottom + self.dimensions['insul_well2']
+
+        xtal_back = self.dimensions["ec_xtal_dist"] + self.dimensions["xtal_len"]
+        front_dl = self.dimensions["ec_xtal_dist"] + self.dimensions["front_dl"]
+        side_dl =  self.dimensions["xtal_rad"] - self.dimensions["side_dl"]
+        back_dl = xtal_back - self.dimensions["back_dl"]
+        xtal_well_depth = self.dimensions["ec_xtal_dist"] + self.dimensions["well_depth"]
+        cyl_well_side_dl = self.dimensions["well_rad_top"] + self.dimensions["well_dl_side"]
+        well_bottom_dl = xtal_well_depth + self.dimensions["well_dl_bottom"]
+        
+        outer_bevel_cone = xtal_back - self.dimensions["bevel_rad"] + self.dimensions["xtal_rad"]
+        inner_bevel_cone = outer_bevel_cone - ((self.dimensions["back_dl"] + self.dimensions["side_dl"]) / np.sqrt(2))
+        tantheta = (self.dimensions["taper_top"])/(self.dimensions["taper_side"])
+        tansquared = np.square(tantheta)
+        costheta = np.cos(np.arctan(tantheta))
+        sintheta = np.sin(np.arctan(tantheta))
+        side_taper = self.dimensions["ec_xtal_dist"] - ((self.dimensions["xtal_rad"] - self.dimensions["taper_top"]) / tantheta)
+        dl_taper = side_taper + ((self.dimensions["taper_dl"])/sintheta) 
+        inner_taper_insulator = side_taper - ((self.dimensions["insul_side"])/sintheta)
+        outer_taper_insulator = side_taper - (((self.dimensions["insul_side"])+(self.dimensions["insul_side2"]))/sintheta)
+        bottom_well_dl = self.dimensions["ec_xtal_dist"] + self.dimensions["well_depth"] + self.dimensions["well_dl_bottom"]
+               
+        groove_front = xtal_back - self.dimensions["groove_depth"]
+        groove_dl_front = xtal_back - self.dimensions["groove_depth"] - self.dimensions["groove_dl"]
+        well_groove_dl = xtal_back - self.dimensions["kludge"]
+        #groove_bottom = self.dimensions["ec_xtal_dist"] + self.dimensions["groove_depth"]
+        #groove_dl_bottom = groove_bottom + self.dimensions["groove_dl"]
+        groove_dl_inner_rad = self.dimensions["groove_irad"] - self.dimensions["groove_dl"]
+        groove_dl_outer_rad = self.dimensions["groove_orad"] + self.dimensions["groove_dl"]
+        #contact_dl = self.dimensions["ec_xtal_dist"] + self.dimensions["contact_dl"]
+        front_bevel_apex = self.dimensions["ec_xtal_dist"] - self.dimensions["xtal_rad"] + self.dimensions["bevel_rad"]*np.sqrt(2)
+        #front_bevel_dl_apex = front_bevel_apex + self.dimensions["bevel_dl"]*np.sqrt(2)
+        back_bevel_apex = xtal_back + self.dimensions["xtal_rad"] - self.dimensions["bevel_rad"]*np.sqrt(2)
+        #back_bevel_dl_apex = back_bevel_apex - self.dimensions["bevel_dl"]*np.sqrt(2)
+
+        front_insulator1 = self.dimensions["ec_xtal_dist"] + self.dimensions["xtal_prot"] - self.dimensions["insul_front"]
+        front_insulator2 = front_insulator1 - self.dimensions["insul_front2"]
+        side_insulator1 = self.dimensions["xtal_rad"] + self.dimensions["insul_side"]
+        side_insulator2 = side_insulator1 + self.dimensions["insul_side2"]
+        back_insulator1 = xtal_back + self.dimensions["insul_back"]
+        back_insulator2 = back_insulator1 + self.dimensions["insul_back2"]
+
+        holder_front = self.dimensions["ec_xtal_dist"] + self.dimensions["xtal_prot"]
+        holder_back = holder_front + self.dimensions["holder_len"]
+        holder_side = side_insulator2 + self.dimensions["holder_thick"]
+        holder_back_front = holder_back - self.dimensions["holder_back"]
+        holder_ring_radius = holder_side + self.dimensions["holder_lipthick"]
+        holder_lip_back = holder_front + self.dimensions["holder_lipwid"]
+        holder_ring1_front = holder_front + self.dimensions["holder_r1pos"]
+        holder_ring1_back = holder_ring1_front + self.dimensions["holder_r1wid"]
+        holder_ring2_front = holder_front + self.dimensions["holder_r2pos"]
+        holder_ring2_back = holder_ring2_front + self.dimensions["holder_r2wid"]
+        
+        we_shape = self.well_shape()
+        h_lid_id = self.holder_lid_id()
+
+        text = ['C   Detector\n']
+        text.append('1    PZ 0    $ Front of Detector End Cap\n')
+        text.append(f'2    PZ {self.dimensions["ec_well_depth"]} $ Bottom (outside of well)\n')
+        text.append(f'3    PZ {endcap_well_bottom_bottom} $ Bottom (inside of well)\n')
+        if self.low_energy_validation:
+            text.append(f'91    PZ {self.dimensions["win_thick"]} $ Back of end cap face- ceramic insert\n')
+        text.append(f'4    PZ {self.dimensions["ec_face"]} $ Back of end cap face\n')
+        text.append(f'5    CZ {self.dimensions["ec_well_radius"]} $ Radius of end cap well (sample side)\n')
+        text.append(f'6    CZ {endcap_inner_radius} $ Inner radius of end cap\n')
+        text.append(f'7    CZ {self.dimensions["ec_rad"]} $ Outer radius of end cap\n')
+        text.append(f'8    PZ {endcap_back_inside} $ Inside of end cap back\n')
+        text.append(f'9    PZ {self.dimensions["ec_len"]} $ Outside of end cap back\n')
+        if self.low_energy_validation:
+            text.append(f'90    CZ {self.dimensions["win_rad"]} $ Detector window radius\n')
+            text.append(f'94    CZ 3.000 $ Outside surface of ceramic insert\n')
+        
+        text.append(f'10    CZ {endcap_well_outer_radius} $ Radius of end cap well (detector side)\n')
+        text.append(f'92    CZ {well_side_insul} $ Radius of in well absorber\n')
+        text.append(f'93    PZ {well_bottom_insul} $ Thickness of bottom well absorber\n')
+        text.append(f'11    PZ {self.dimensions["ec_xtal_dist"]} $ Crystal Front\n')
+        text.append(f'12    PZ {front_dl} $ Front dead layer\n') 
+        text.append(f'13    PZ {xtal_back} $ Back of crystal\n')
+        text.append(f'14    CZ {self.dimensions["xtal_rad"]} $ Crystal radius\n')
+        text.append(f'15    CZ {side_dl} $ Side dead layer\n') 
+        text.append(f'16    PZ {back_dl} $ Back dead layer\n')        
+
+        text.append(f'23    KZ {inner_bevel_cone} 1 -1 $ Cone for inner bevel\n')
+        text.append(f'24    KZ {outer_bevel_cone} 1 -1 $ Cone for outer bevel\n')
+        text.append(f'25    KZ {side_taper} {tansquared} 1 $ Crystal side taper\n')
+        text.append(f'26    KZ {dl_taper} {tansquared} 1 $ Crystal dead layer taper\n')
+        text.append(f'27    KZ {inner_taper_insulator} {tansquared} 1 $ Inner Insulator on taper\n')
+        text.append(f'28    KZ {outer_taper_insulator} {tansquared} 1 $ Outer Insulator on taper\n')
+        
+        if self.dimensions["well_dl_bottom"] > 0 or self.dimensions["well_dl_side"] > 0:
+            if we_shape == "cylinder":
+                text.append(f'29    CZ {cyl_well_side_dl} $ Side Well dead layer\n')
+            elif we_shape == "cone":
+                well_difference = (self.dimensions["well_rad_top"] - self.dimensions["well_rad_bottom"])
+                imaginary_h = ((self.dimensions["well_rad_top"] * self.dimensions["well_depth"]) / well_difference )
+                delta_h = (self.dimensions["well_dl_side"] / (np.sin(np.arctan((well_difference)/(self.dimensions["well_depth"])))))
+                conic_side_well_dl = imaginary_h + delta_h + self.dimensions["ec_xtal_dist"]
+                conic2 = np.square((self.dimensions["well_rad_top"])/(imaginary_h))
+                text.append(f'29    KZ {conic_side_well_dl} {conic2} -1 $ Conic Side Well dead layer\n')
+            elif we_shape == "inv_cone":
+                well_difference = (self.dimensions["well_rad_bottom"] - self.dimensions["well_rad_top"])
+                imaginary_h = ((self.dimensions["well_rad_bottom"] * self.dimensions["well_depth"]) / well_difference )
+                delta_h = (self.dimensions["well_dl_side"] / (np.sin(np.arctan((well_difference)/(self.dimensions["well_depth"])))))
+                conic_side_well_dl = self.dimensions["ec_xtal_dist"] + self.dimensions["well.depth"] - imaginary_h - delta_h  
+                conic2 = np.square((self.dimensions["well_rad_bottom"])/(imaginary_h))
+                text.append(f'29    KZ {conic_side_well_dl} {conic2} 1 $ Conic Side Well dead layer\n')
+            
+            text.append(f'30    PZ {bottom_well_dl} $ Bottom Well dead layer\n')   
+        
+        if we_shape == "cylinder":
+            text.append(f'31    CZ {self.dimensions["well_rad_top"]} $ Well radius\n')
+        elif we_shape == "cone":
+            well_cone = imaginary_h + self.dimensions["ec_xtal_dist"] 
+            well_cone2 = np.square((self.dimensions["well_rad_top"]) / imaginary_h)
+            text.append(f'31    KZ {well_cone} {well_cone2} -1 $ Well radius\n')
+        elif we_shape == "inv_cone":
+            well_cone = self.dimensions["ec_xtal_dist"] + self.dimensions["well_depth"] - imaginary_h 
+            well_cone2 = np.square((self.dimensions["well_rad_bottom"]) / imaginary_h)
+            text.append(f'31    KZ {well_cone} {well_cone2} 1 $ Well radius\n')    
+        
+        text.append(f'32    PZ {xtal_well_depth} $ Front surface of the well\n')
+        text.append(f'33    PZ {groove_front} $ Front surface of the groove\n')
+        text.append(f'34    CZ {self.dimensions["groove_irad"]} $ Groove inner radius\n')
+        text.append(f'35    CZ {self.dimensions["groove_orad"]} $ Groove outer radius\n')
+        
+        text.append(f'41    PZ {groove_dl_front} $ Front surface of groove dead layer\n')
+        text.append(f'42    PZ {well_groove_dl} $ dead layer between well and groove\n')
+        text.append(f'43    CZ {groove_dl_inner_rad} $ Groove dead layer inner radius\n')
+        text.append(f'44    CZ {groove_dl_outer_rad} $ Groove dead layer outer radius\n')
+
+        text.append(f'51    CZ {side_insulator1} $ inner side insulator\n')
+        text.append(f'54    PZ {front_insulator1} $ inner front insulator\n')
+        text.append(f'55    CZ {side_insulator2} $ outside side insulator\n')
+        text.append(f'56    PZ {front_insulator2} $ outside front insulator\n')
+        text.append(f'57    PZ {back_insulator1} $ inside back insulator\n')
+        text.append(f'58    PZ {back_insulator2} $ outside back insulator\n')
+
+        text.append(f'60    PZ {holder_front} $ Holder front\n')
+        text.append(f'61    CZ {holder_side} $ Holder back\n')
+        text.append(f'62    CZ {holder_ring_radius} $ Holder side\n')
+        text.append(f'63    PZ {holder_lip_back} $ Holder back front surface\n')
+        text.append(f'64    PZ {holder_ring1_front} $ Holder ring radius\n')
+        text.append(f'65    PZ {holder_ring1_back} $ Holder lip bottom\n')
+        text.append(f'66    PZ {holder_ring2_front} $ Holder ring 1 front\n')
+        text.append(f'67    PZ {holder_ring2_back} $ Holder ring 1 back\n')
+        text.append(f'68    PZ {holder_back_front} $ Holder ring 2 front\n')
+        text.append(f'69    PZ {holder_back} $ Holder ring 2 back\n')
+        text.append(f'78    CZ {h_lid_id} $ Inside radius of holder lid\n')
+        return text
+
+    def cells(self, source, electrontrack):
+        """
+        The cell cards for the GSW detector.
+
+        Parameters
+        ----------
+        source : Source
+            The source that the geometry is used with
+
+        electrontrack : bool
+            If True electron will be enabled, if False electron tracking
+            will be disabled.
+
+        Returns
+        -------
+        text : List
+            List containing the cell cards for the GSW detector.
+
+        """
+        mat_lib = MCNPMaterialLibrary()
+
+        text = ['C detector cells\n']
+
+        # Endcap front with and without a thin window
+        if self.low_energy_validation:
+            text.append(f'2    {mat_lib.number(self.dimensions["win_mat"])} -{mat_lib.density(self.dimensions["win_mat"])}  91 5 -10 -3 : 5 -94 -91 1 {self.importance(electrontrack)}  $ the end cap side well\n')
+        else:
+            text.append(f'2    {mat_lib.number(self.dimensions["win_mat"])} -{mat_lib.density(self.dimensions["win_mat"])}  4 5 -10 -3 {self.importance(electrontrack)}  $ the end cap side well\n')
+
+        text.append(f'3    {mat_lib.number(self.dimensions["win_mat"])} -{mat_lib.density(self.dimensions["win_mat"])}  2 -3 -5 {self.importance(electrontrack)}  $ the end cap bottom of well\n')
+        if self.low_energy_validation:
+            text.append(f'4    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])}  1 -4 94 -7 : -94 90 91 -4 {self.importance(electrontrack)}  $ End cap face\n')
+        else:
+            text.append(f'4    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])}  1 -4 5 -7 {self.importance(electrontrack)}  $ End cap face\n')
+        
+        text.append(f'5    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])}  4 -8 6 -7 {self.importance(electrontrack)}  $ Side of End cap\n')
+        text.append(f'6    {mat_lib.number(self.dimensions["ec_mat"])} -{mat_lib.density(self.dimensions["ec_mat"])} 8 -9 -7 {self.importance(electrontrack)}  $ Back of End cap\n')
+        if self.low_energy_validation:
+            text.append(f'7    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")}  4 10 -55 -56 : -4 91 -90 10 {self.importance(electrontrack)}  $ AIR BETWEEN EC and Crystal front\n')
+        else:
+            text.append(f'7    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")}  4 10 -55 -56 {self.importance(electrontrack)}  $ AIR BETWEEN EC and Crystal front\n')
+        text.append(f'8    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 93 -32 -10 {self.importance(electrontrack)}  $ Gap at bottom of well\n')
+        text.append(f'9    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 10 56 -31 -32 #51 #53 #55 {self.importance(electrontrack)}  $ Gap along side of well\n')
+
+        text.append(f'11    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} -13 33 34 -35 {self.importance(electrontrack)}  $ Air (in Groove)\n')
+        text.append(f'12    {mat_lib.number("ge")} -{mat_lib.density("ge")} 11 -32 31 -29 {self.importance(electrontrack)}  $ Well side dead layer\n')
+        text.append(f'13    {mat_lib.number("ge")} -{mat_lib.density("ge")} -30 -29  32 {self.importance(electrontrack)}  $ Well bottom dead layer\n')
+        
+        text.append(f'21   {mat_lib.number("ge")} -{mat_lib.density("ge")} 11 -12 -26 29 {self.importance(electrontrack)}  $ Front dead layer\n')
+        text.append(f'22   {mat_lib.number("ge")} -{mat_lib.density("ge")} -26 -23 15 -14 {self.importance(electrontrack)}  $ Side dead layer\n')
+        text.append(f'23   {mat_lib.number("ge")} -{mat_lib.density("ge")} -13 -14 23 -24 {self.importance(electrontrack)}  $ Bevel area dead layer\n')
+        text.append(f'24   {mat_lib.number("ge")} -{mat_lib.density("ge")} -13 16 -23 44 {self.importance(electrontrack)}  $ Back dead layer\n')
+        text.append(f'25   {mat_lib.number("ge")} -{mat_lib.density("ge")} -25 26 -14 11 {self.importance(electrontrack)}  $ Taper dead layer\n')
+        
+        text.append(f'31   {mat_lib.number("ge")} -{mat_lib.density("ge")} 41 -13 35 -44 {self.importance(electrontrack)}  $ Groove outer radius dead layer\n')
+        text.append(f'32   {mat_lib.number("ge")} -{mat_lib.density("ge")} 41 -33 34 -35 {self.importance(electrontrack)}  $ Groove back dead layer\n')
+        text.append(f'33   {mat_lib.number("ge")} -{mat_lib.density("ge")} 41 -13 43 -34 {self.importance(electrontrack)}  $ Groove inner radius dead layer\n')
+        text.append(f'34   {mat_lib.number("ge")} -{mat_lib.density("ge")} -13 42 -43 {self.importance(electrontrack)}  $ Dead layer between grooves\n')
+        
+        text.append(f'40   {mat_lib.number("ge")} -{mat_lib.density("ge")} 12 -13 -15 -23 -26 #(-29 -30 11)\n')
+        text.append(f'      #11 #24 #31 #32 #33 #34 {self.importance(electrontrack, crystal=True)}  $ Crystal Active Volume\n')
+        if self.dimensions["xtal_prot"] < 0:
+            text.append(f'47   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 28 56 -55 #51 #55 #470 {self.importance(electrontrack)}  $ Vacuum Gap due to taper\n')
+            text.append(f'470  {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} -11 -28 31 60       {self.importance(electrontrack)}  $ Vacuum Gap due to negative protrusion\n')
+        else:
+            text.append(f'47   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 28 56 -55 #51 #55 {self.importance(electrontrack)}  $ Vacuum Gap due to taper\n')
+        text.append(f'48   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} -27 25 -51 11  {self.importance(electrontrack)}  $ side inner taper insulator\n')
+        text.append(f'49   {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} -28 27 -55 11  {self.importance(electrontrack)}  $ Side outer taper insulator\n')
+        
+        text.append(f'51   {mat_lib.number(self.dimensions["insul_f_mat"])} -{self.dimensions["insul_f_den"]} 78 54 -60 -62  {self.importance(electrontrack)}  $ Front inner insulator\n')
+        text.append(f'52   {mat_lib.number(self.dimensions["insul_s_mat"])} -{self.dimensions["insul_s_den"]} -25 -13 14 -51 {self.importance(electrontrack)} $ Side inner insulator\n')
+        text.append(f'53   {mat_lib.number(self.dimensions["insul_w_mat"])} -{self.dimensions["insul_w_den"]} 10 -92 -93 11 {self.importance(electrontrack)} $ Side well insulator\n')
+        text.append(f'54   {mat_lib.number(self.dimensions["insul_w2_mat"])} -{self.dimensions["insul_w2_den"]} -10 3 -93 {self.importance(electrontrack)} $ Bottom well insulator\n')
+        text.append(f'55   {mat_lib.number(self.dimensions["insul_f2_mat"])} -{self.dimensions["insul_f2_den"]} 78 56 -54 -62 {self.importance(electrontrack)} $ Front outer insulator\n')
+        text.append(f'56   {mat_lib.number(self.dimensions["insul_s2_mat"])} -{self.dimensions["insul_s2_den"]} -27 -57 51 -55 {self.importance(electrontrack)} $ Side outer insulator\n')
+        text.append(f'57   {mat_lib.number(self.dimensions["insul_b_mat"])} -{self.dimensions["insul_b_den"]} 13 -57 -51 {self.importance(electrontrack)} $ Back inner insulator\n')
+        text.append(f'58   {mat_lib.number(self.dimensions["insul_b2_mat"])} -{self.dimensions["insul_b2_den"]} 57 -58 -55 {self.importance(electrontrack)} $ Back outer insulator\n')
+
+        text.append(f'60    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 4 -60 55 -61 #51 #55 {self.importance(electrontrack)}  $ Gap around crystal protusion\n')
+        text.append(f'61    {mat_lib.number(self.dimensions["holder_mat"])} -{mat_lib.density(self.dimensions["holder_mat"])} 60 -68 55 -61  {self.importance(electrontrack)}  $ Holder side\n')
+        text.append(f'62    {mat_lib.number(self.dimensions["holder_mat"])} -{mat_lib.density(self.dimensions["holder_mat"])} 60 -63 61 -62  {self.importance(electrontrack)}  $ Holder lip\n')
+        text.append(f'63    {mat_lib.number(self.dimensions["holder_mat"])} -{mat_lib.density(self.dimensions["holder_mat"])} 64 -65 61 -62  {self.importance(electrontrack)}  $ Holder 1st ring\n')
+        text.append(f'64    {mat_lib.number(self.dimensions["holder_mat"])} -{mat_lib.density(self.dimensions["holder_mat"])} 66 -67 61 -62  {self.importance(electrontrack)}  $ Holder 2nd ring\n')
+        text.append(f'65    {mat_lib.number(self.dimensions["holder_mat"])} -{mat_lib.density(self.dimensions["holder_mat"])} 68 -69 -61     {self.importance(electrontrack)}  $ Holder base\n')
+        text.append(f'66    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 24 -13 -14 {self.importance(electrontrack)}  $ Vacuum between insulator and holder back\n')
+        text.append(f'67    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 4 -69 61 -6 #51 #55 #62 #63 #64 {self.importance(electrontrack)}  $ Vacuum above holder\n')
+        text.append(f'68    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 69 -8 -6  {self.importance(electrontrack)}  $ Vacuum between holder and endcap\n')
+        text.append(f'69    {mat_lib.number("det_vacuum")} -{mat_lib.density("det_vacuum")} 58 -68 -55  {self.importance(electrontrack)}  $ Vacuum between holder rings\n')
+
+        return text
+
+    def endcap_boundary(self):
+        """
+        The endcap boundary in MCNP
+
+        Returns
+        -------
+        str
+            Surfaces that describes the endcap boundary in MCNP.
+
+        """
+        return '((-99 #(1 -9 -7)):(1 -2 -5))'
+
+    def add_characterization_points(self, filename):
+        """
+        Add points in the well to the characterization points file.
+        This was ported from the MCNP tcl script. One modification
+        was made, the corner points include 90 degree points
+
+        Parameters
+        ----------
+        filename : string
+            The path to the points file.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        radial_points = 20
+        corner_points = 20
+        text = []
+
+        # Adding points in well
+        well_radius = self.dimensions['ec_well_radius']
+        well_depth = self.dimensions['ec_well_depth']
+
+        corner_angle = np.arctan(well_depth/well_radius) + np.pi / 2.0
+        phi_step = np.pi/72.0
+        r_step = np.log(500000.0)/439.0
+
+        for i in range(37, 73):
+            phi = i * phi_step
+            if phi < corner_angle:
+                max_radius = well_radius / np.sin(phi)
+            else:
+                max_radius = well_depth / np.cos(np.pi - phi)
+
+            step = (max_radius - 0.1001) / (radial_points - 1)
+            for j in range(0, radial_points):
+                r = 0.1 + j * step
+                p = phi / np.pi * 180.0
+                text.append(f'{r:<12.6f}  {p:>10.6f}\n')
+
+        # Adding points at the well end cap corner
+        # Changed the first point to be 5 steps from the edge.
+        well_radius *= 10.0
+        first_point = int(np.floor(np.log(well_radius)/r_step)) - 5
+
+        for i in range(32, 37):
+            phi = i * phi_step
+            for j in range(first_point, first_point + corner_points):
+                r = np.exp(r_step*j)/10
+                p = phi / np.pi * 180
+                text.append(f'{r:<12.6f}  {p:>10.6f}\n')
+
+        # Write to the file
+        with open(filename, 'a') as file:
+            file.writelines(text)
+            file.close()
+
+    def process_outfile(self, folder_name):
+        """
+        Removes the points in the well from the .out file and stores the well
+        points in a separate file
+
+        Ported from the MCNPtcl script
+
+        Returns
+        -------
+        well_file : str
+            The results from the MCNP simulations in the well.
+
+        """
+
+        out_filename = os.path.join(folder_name, f'{self.serialnumber}.out')
+        well_filename = os.path.join(folder_name, f'{self.serialnumber}_well.out')
+        temp_filename = os.path.join(folder_name, f'{self.serialnumber}_temp.out')
+
+        well_radius = self.dimensions['ec_well_radius']
+        well_depth = self.dimensions['ec_well_depth']
+
+        max_well_distance = np.sqrt(well_radius**2 + well_depth**2)
+
+        with open(out_filename, 'r') as out_file, open(well_filename, 'w') as well_file, open(temp_filename, 'w') as temp_file:
+            for line in out_file:
+                r = float(line.split()[0])
+                phi = float(line.split()[1])
+                if r < max_well_distance and phi > 90:
+                    well_file.write(line)
+                else:
+                    temp_file.write(line)
+            out_file.close()
+            temp_file.close()
+            well_file.close()
+
+        shutil.copy(temp_filename, out_filename)
+        os.remove(temp_filename)
+
+        return well_filename
+
+    def process_parfile(self, parfile_name, processed_name):
+        """
+        Add the vacuum efficiency in the well.
+
+        Ported from MCNPtcl
+
+        Parameters
+        ----------
+        processed_name : str
+            Path to file that contains the MCNP calculations in the well.
+
+        Returns
+        -------
+        None.
+
+        """
+
+
+        well_radius = self.dimensions['ec_well_radius']
+        well_depth = self.dimensions['ec_well_depth']
+        corner_angle = np.arctan(well_depth/well_radius) + np.pi / 2.0
+
+        shutil.copy(parfile_name, f'{self.serialnumber}_outside_well.par')
+        # with open(processed_name, 'r') as well_file, open(parfile_name, 'r+b') as parfile:
+        #     content = parfile.read()
+        #     position = 18
+        #     minimumEnergy, maximumEnergy, numberOfEnergies = struct.unpack("ddh", content[:18])
+        #     energies = struct.unpack("d" * self.numberOfEnergies, content[position:(position + 8 * self.numberOfEnergies)])
+        #     for i, energy in enumerate(energies):
+
+        par = parfile.Parfile(parfile_name)
+
+        well_points = {}
+
+        # read in the well points in a double nested dictionary
+        with open(processed_name, 'r') as well_file:
+            for line in well_file:
+                res = experiment.Result.from_string(line)
+                energy = well_points.get(res.energy, {})
+                theta = energy.get(res.theta, ([], []))
+                theta[0].append(res.r * 10.0)
+                theta[1].append(res.eff)
+                energy[res.theta] = theta
+                well_points[res.energy] = energy
+
+        # Create the cubic spline and interpolate at  the parfile points
+        for energy, temp in well_points.items():
+            vacuum_efficiency = par.get_vacuum_efficiency(energy)
+            step_r = vacuum_efficiency.stepR
+            for theta, value in temp.items():
+                r = np.array(value[0])
+                eff = np.array(value[1])
+                cubic_spline = CubicSpline(r, eff)
+                if np.deg2rad(theta) < corner_angle:
+                    max_radius = 10 * well_radius / np.sin(np.deg2rad(theta))
+                else:
+                    max_radius = 10 * well_depth / np.cos(np.pi-np.deg2rad(theta))
+                radii = []
+                temp = 1
+                counter = 0
+                while temp < max_radius:
+                    radii.append(temp)
+                    counter += 1
+                    temp = np.exp(counter*step_r)
+
+                radii = np.array(radii)
+                efficiencies = cubic_spline(radii)
+                index = parfile.iround(theta / 2.5)
+                vacuum_efficiency.vacuumEfficiency[:len(radii), index] = efficiencies
+
+        par.write_parfile(parfile_name)
+
+
+    def create_detectortxt(self, folder_name, ordernumber, customer):
+        """
+        Create the detector.txt file from the detector parameters.
+
+        Parameters
+        ----------
+        folder_name : string
+            The folder where the characterzition files are located.
+        ordernumber : string
+            The order number for the characterization.
+        customer : string
+            The customer.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        mat_lib = MCNPMaterialLibrary()
+        crystal_mat, crystal_den = self.crystal_material(mat_lib)
+        # kludge to get AEGIS to use a different end cap back material
+        ec_back_mat, ec_back_den = self.endcap_back_material(mat_lib)
+        with open(os.path.join(folder_name, 'detector.txt'), 'w') as det_text:
+            det_text.write(f'# {ordernumber} - {customer} - {self.modelnumber} - S/N {self.serialnumber}\n')
+            if self.dimensions['win_thick'] == self.dimensions['ec_face']:
+                win_diameter = 0.0
+                thin_window_xtal_gap = self.dimensions["ec_xtal_dist"]*10.0
+            else:
+                win_diameter = 20.0*self.dimensions["ec_well_radius"]
+                # TODO: Understand this calculation, copied from MCNPtcl
+                thin_window_xtal_gap = 5.0 * (self.dimensions['ec_face'] - self.dimensions['win_thick'] + self.dimensions["ec_xtal_dist"])
+            ec_well_thick = (self.dimensions['ec_well_side'] + self.dimensions['ec_well_bottom']) / 2.0 * 10.0
+            well_dl_thick = (self.dimensions['well_dl_side'] + self.dimensions['well_dl_bottom']) / 2.0 * 10.0
+           # Unsure why I'm averaging these values, but it's what's in MCNP
+            ave_well_rad = ((self.dimensions['well_rad_top'] + self.dimensions['well_rad_bottom']) / 2)
+            det_text.write(f'{self.serialnumber},{self.dimensions["xtal_rad"]*20.0:.4g},{self.dimensions["xtal_len"]*10.0:.4g},{win_diameter:.4g},{self.dimensions["ec_rad"]*20.0:.4g},{self.dimensions["ec_len"]*10.0:.4g},{thin_window_xtal_gap:.4g},{self.dimensions["ec_xtal_dist"]*10.0:.4g},26,{self.serialnumber}.par,4,{self.dimensions["ec_well_radius"]*20:.4g},{self.dimensions["ec_well_depth"]*10:.4g},{ec_well_thick:.4g},{ave_well_rad*20:.4g},{self.dimensions["well_depth"]*10:.4g},{well_dl_thick:.4g},{self.dimensions["xtal_rad"]*20.0-0.1:.4g},{self.dimensions["xtal_len"]*10.0-0.1:.4g},  #\n')
+            det_text.write(f'{crystal_mat},{self.dimensions["front_dl"]*10.0:.4g},{crystal_den}, #\n')
+            if win_diameter > 0:
+                det_text.write(f'{self.dimensions["win_mat"]},{self.dimensions["win_thick"]*10.0:.4g},{mat_lib.density(self.dimensions["win_mat"])}, #\n')
+            else:
+                det_text.write(',,, #\n')
+            det_text.write(f'{self.dimensions["ec_mat"]},{self.dimensions["ec_face"]*10.0:.4g},{mat_lib.density(self.dimensions["ec_mat"])}, #\n')
+            det_text.write(f'{crystal_mat},{self.dimensions["side_dl"]*10.0:.4g},{crystal_den}, #\n')
+            holder_thick = self.holder_thickness()
+            det_text.write(f'{self.dimensions["holder_mat"]},{holder_thick*10.0:.4g},{mat_lib.density(self.dimensions["holder_mat"])}, #\n')
+            det_text.write(f'{self.dimensions["ec_mat"]},{self.dimensions["ec_side"]*10.0:.4g},{mat_lib.density(self.dimensions["ec_mat"])}, #\n')
+            # The dead layer thickness is set so that the total detector volume is correct
+            # this accounts for the detector well (Coax) and groove. Current calc doesn't account for the bevel (probably minimal effect)
+            back_dl = self.back_dead_layer()
+            det_text.write(f'{crystal_mat},{back_dl:.4g},{crystal_den}, #\n')
+            det_text.write(f'{self.dimensions["holder_mat"]},{self.dimensions["holder_back"]*10.0:.4g},{mat_lib.density(self.dimensions["holder_mat"])}, #\n')
+            det_text.write(f'{ec_back_mat},{self.dimensions["ec_back"]*10.0:.4g},{ec_back_den}\n')
 
 class Generic(Detector):
     def __init__(self, serialnumber):
@@ -2695,7 +3432,7 @@ class Generic(Detector):
             Surfaces that describes the endcap boundary in MCNP.
 
         """
-        return '(1 -8 -6)'
+        return '#(1 -8 -6)'
 
     def crystal_material(self, mat_lib):
         """
