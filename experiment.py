@@ -17,7 +17,7 @@ from tkinter import ttk
 import subprocess
 from sources import ZeroD, NinetyD, OneThirtyFiveD, DC, DF, DR, FortyFiveD, PointSource, WE, SmallWE
 import isocs_utility_functions as utilities
-from detector import AegisBEGe, AegisCoax, Generic, GCW
+from detector import AegisBEGe, AegisCoax, Generic, GCW, GSW
 import mcnp
 
 class Experiment:
@@ -124,7 +124,7 @@ class Experiment:
         table.append(['#End', '','','','',''])
 
         sheet.range('A1').value = table
-        utilities.set_low_energy_validation(sheet.book, self.detector.low_energy_validation)
+        utilities.set_low_energy_validation(sheet.book, self.detector.low_energy_validation())
 
     @classmethod
     def extract_from_config_sheet(cls, config_sheet):
@@ -234,6 +234,8 @@ class Experiment:
             detector = Generic(serialnumber)
         elif model.lower().startswith('gcw'):
             detector = GCW(serialnumber, model)
+        elif model.lower().startswith('gsw'):
+            detector = GSW(serialnumber, model)
         else:
             raise ValueError(f'Unknown model: {model}')
 
@@ -374,6 +376,8 @@ class Iteration(Experiment):
             detector = Generic(serial_number)
         elif model.lower().startswith('gcw'):
             detector = GCW(serial_number, model)
+        elif model.lower().startswith('gsw'):
+            detector = GSW(serial_number, model)
         else:
             raise ValueError(f'Unknown model: {model}')
         detector.initial_detector_dimensions(init_sheet, standard_sheet)

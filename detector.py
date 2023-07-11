@@ -724,7 +724,24 @@ class Detector(ABC):
         None.
 
         """
-        pass
+        
+        pts = 40 #Number of points to be added
+
+        window_radius = self.dimensions['win_rad']
+
+        phi = 90
+        r_step = .4/pts
+        text = []
+
+        for i in range(pts):
+            r = window_radius - .2 + (i*r_step)
+            p = phi
+            text.append(f'{r:<12.6f}  {p:>10.6f}\n')
+
+        # Write to the file
+        with open(filename, 'a') as file:
+            file.writelines(text)
+            file.close()
     
     @abstractmethod
     def low_energy_validation(self):
@@ -2280,7 +2297,7 @@ class GCW(Detector):
         None.
 
         """
-
+        super().add_characterization_points(filename)
         radial_points = 20
         corner_points = 20
         text = []
@@ -2963,7 +2980,7 @@ class GSW(Detector):
         None.
 
         """
-
+        super().add_characterization_points(filename)
         radial_points = 20
         corner_points = 20
         text = []
