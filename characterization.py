@@ -7,6 +7,7 @@ Created on Wed Oct 30 13:20:45 2019
 
 import xlwings as xw
 import os
+import sys
 import isocs_utility_functions as utilities
 from experiment import Characterization
 from iterations import clear_init
@@ -67,11 +68,34 @@ def clear_initialize():
     clear_init(wb, sheet, config_sheet, meas_sheet)
 
 
+def run_background(param_file):
+    """
+    Entry point for the detached background process started by
+    Characterization.run(). Runs the MCNP submission/monitoring loop
+    independently of Excel.
+
+    Parameters
+    ----------
+    param_file : string
+        Path to the parameter file written by Characterization.run().
+
+    Returns
+    -------
+    None.
+
+    """
+    experiment, workbook_fullname = Characterization.from_param_file(param_file)
+    experiment.run_loop(workbook_fullname)
+
+
 # This code is used for debugging
 if __name__ == '__main__':
-    # Expects the Excel file next to this source file, adjust accordingly.
-    xw.Book('SN1730_v5_6_11.xlsm').set_mock_caller()
-    #xw.Book(r'P:\ISOCSProduction\Det_2019\R4_87677\SNR4_v5_0_0.xlsm').set_mock_caller()
-    make_par()
+    if len(sys.argv) > 2 and sys.argv[1] == '--run-background':
+        run_background(sys.argv[2])
+    else:
+        # Expects the Excel file next to this source file, adjust accordingly.
+        xw.Book('SN1730_v5_6_11.xlsm').set_mock_caller()
+        #xw.Book(r'P:\ISOCSProduction\Det_2019\R4_87677\SNR4_v5_0_0.xlsm').set_mock_caller()
+        make_par()
     #clear_initialize()
     #loop()

@@ -7,7 +7,10 @@ Created on Mon Dec  2 08:17:36 2019
 
 import datetime
 import ctypes
+import time
 import os
+import sys
+import threading
 import numpy as np
 import collections
 import glob
@@ -15,15 +18,22 @@ import shutil
 import tkinter as tk
 from tkinter import ttk
 import subprocess
-from sources import ZeroD, NinetyD, OneThirtyFiveD, DC, DF, DR, FortyFiveD, PointSource, WE, SmallWE
+import xlwings as xw
+from sources import Source, ZeroD, NinetyD, OneThirtyFiveD, DC, DF, DR, FortyFiveD, PointSource, WE, SmallWE
 import isocs_utility_functions as utilities
 from detector import AegisBEGe, AegisCoax, Generic, GCW, GSW
 import mcnp
+from concurrent.futures import ThreadPoolExecutor
+import traceback
+from typing import Union
+
+
+VERBOSE = 0
 
 class Experiment:
     def __init__(self, detector, ordernumber, folder_name, simtype='full', errlimit=0.01, defaulthist=35000, maxhist=1000000,
                  queue='alpha', coorname=None, electrontrack=False, debug=False,
-                 full_detector=True, customer='', priority=1, max_submitted=50,
+                 full_detector=True, customer='', priority=1, max_submitted=99,
                  max_lost_particles=10, low_energy_validation=True):
         """
         Class to controll all parameters related to running iterations and
@@ -292,7 +302,7 @@ class Iteration(Experiment):
         """
         super().__init__(detector, ordernumber, folder_name, simtype, errlimit,
              defaulthist, maxhist, queue, coorname, electrontrack, debug,
-             full_detector, customer, priority=1, max_submitted=50,
+             full_detector, customer, priority=1, max_submitted=99,
              max_lost_particles=10, low_energy_validation=low_energy_validation)
 
     @classmethod
@@ -467,6 +477,12 @@ class Iteration(Experiment):
         elif self.queue.lower() == 'charlie':
             inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\InQueue'
             outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\OutQueue'
+        elif self.queue.lower() == 'xray':
+            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerX_Local\InQueue'
+            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerX_Local\OutQueue'
+        elif self.queue.lower() == 'delta':
+            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerD_Local\InQueue'
+            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerD_Local\OutQueue'  
         else:
             ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.interation_queue}', 'Unknown queue', 0)
             return
@@ -700,7 +716,7 @@ class Characterization(Experiment):
         """
         super().__init__(detector, ordernumber, folder_name, simtype, errlimit,
              defaulthist, maxhist, queue, coorname, electrontrack, debug,
-             full_detector, customer, priority=2, max_submitted=50,
+             full_detector, customer, priority=2, max_submitted=999,
              max_lost_particles=max_lost_particles, low_energy_validation=low_energy_validation)
         self.parfile_energies = [10, 12, 16, 22, 32, 45, 60, 80, 100, 122, 186,
                                  300, 500, 662, 898, 1173, 1332, 1836, 3000,
@@ -744,11 +760,148 @@ class Characterization(Experiment):
                  full_detector=fulldetector, customer=customer, low_energy_validation=low_energy_validation,
                  max_lost_particles=max_lost_particles)
 
+    def _lock_file_path(self):
+        """Path to the marker file used to detect a background loop already in progress."""
+        return os.path.join(self.folder_name, f'{self.detector.serialnumber}_char.lock')
+
+    def write_bg_param_file(self, path, workbook_fullname):
+        """
+        Writes the parameters needed to reconstruct this Characterization
+        instance to a plain text file, so the background loop process can
+        run without an Excel connection. See from_param_file for the reader.
+
+        Parameters
+        ----------
+        path : string
+            Path of the parameter file to write.
+        workbook_fullname : string
+            Full path of the calling Excel workbook, kept only so the
+            background process can make a best-effort attempt to clear the
+            "MCNP running" flag when it finishes.
+
+        Returns
+        -------
+        None.
+
+        """
+        lines = [
+            f'~serialnumber {self.detector.serialnumber}',
+            f'~modelnumber {self.detector.modelnumber}',
+            f'~ordernumber {self.ordernumber}',
+            f'~customer {self.customer}',
+            f'~coorname {self.coorname}',
+            f'~simtype {self.simtype}',
+            f'~errlimit {self.errlimit}',
+            f'~defaulthist {self.defaulthist}',
+            f'~maxhist {self.maxhist}',
+            f'~queue {self.queue}',
+            f'~electrontrack {self.electrontrack}',
+            f'~debug {self.debug}',
+            f'~fulldetector {self.full_detector}',
+            f'~low_energy_validation {self.low_energy_validation}',
+            f'~max_lost_particles {self.max_lost_particles}',
+            f'~folder_name {self.folder_name}',
+            f'~workbook_fullname {workbook_fullname}',
+            '#Start',
+        ]
+        for key, value in self.detector.dimensions.items():
+            lines.append(f'{key} {value}')
+        lines.append('#End')
+        with open(path, 'w') as param_file:
+            param_file.write('\n'.join(lines) + '\n')
+
+    @classmethod
+    def from_param_file(cls, path):
+        """
+        Reconstructs a Characterization instance from a file written by
+        write_bg_param_file, without requiring an Excel connection.
+
+        Parameters
+        ----------
+        path : string
+            Path to the parameter file.
+
+        Returns
+        -------
+        Characterization
+            The reconstructed instance.
+        string
+            The Excel workbook full path that was recorded when the file was
+            written (may be an empty string).
+
+        """
+        values = {}
+        dimensions = {}
+        in_dimensions = False
+        with open(path, 'r') as param_file:
+            for line in param_file:
+                line = line.rstrip('\n')
+                if not line:
+                    continue
+                if line == '#Start':
+                    in_dimensions = True
+                    continue
+                if line == '#End':
+                    in_dimensions = False
+                    continue
+                key, _, value = line.partition(' ')
+                if in_dimensions:
+                    try:
+                        dimensions[key] = float(value)
+                    except ValueError:
+                        dimensions[key] = value
+                else:
+                    values[key.lstrip('~')] = value
+
+        def _bool(value):
+            return value.strip().lower() in ('1', 'true', 'yes')
+
+        model = values['modelnumber']
+        serialnumber = values['serialnumber']
+        if model.lower() == 'aegis-bege5030':
+            detector = AegisBEGe(serialnumber)
+        elif model.lower() == 'aegis-gc40':
+            detector = AegisCoax(serialnumber, 'GC')
+        elif model.lower() == 'aegis-gx40':
+            detector = AegisCoax(serialnumber, 'GX')
+        elif model.lower() == 'generic':
+            detector = Generic(serialnumber)
+        elif model.lower().startswith('gcw'):
+            detector = GCW(serialnumber, model)
+        elif model.lower().startswith('gsw'):
+            detector = GSW(serialnumber, model)
+        else:
+            raise ValueError(f'Unknown model: {model}')
+        for key, value in dimensions.items():
+            detector.dimensions[key] = value
+
+        characterization = cls(
+            detector,
+            values['ordernumber'],
+            values['folder_name'],
+            simtype=values['simtype'],
+            errlimit=float(values['errlimit']),
+            defaulthist=int(values['defaulthist']),
+            maxhist=int(values['maxhist']),
+            queue=values['queue'],
+            coorname=values['coorname'],
+            electrontrack=_bool(values['electrontrack']),
+            debug=_bool(values['debug']),
+            full_detector=_bool(values['fulldetector']),
+            customer=values['customer'],
+            low_energy_validation=_bool(values['low_energy_validation']),
+            max_lost_particles=int(values['max_lost_particles']),
+        )
+        return characterization, values.get('workbook_fullname', '')
+
     def run(self, char_sheet, iter_sheet, standard_sheet):
         """
-        Run the MCNP loop for the characterization
-        The function detects if the run has already been started and if so
-        the loop will continue from where the previous run left off.
+        Starts the MCNP characterization loop in a detached background
+        process that is fully independent of Excel, so this workbook can be
+        closed while the loop (which can run for hours) submits and monitors
+        MCNP jobs. The background process detects if the run has already
+        been started and if so continues from where the previous run left
+        off.
 
         If a restart is desired then the xxxxx_char.out file should be deleted.
 
@@ -767,8 +920,6 @@ class Characterization(Experiment):
 
         """
 
-        start_time = datetime.datetime.now()
-
         if not self.detector.validate_model(standard_sheet):
             return
 
@@ -780,130 +931,187 @@ class Characterization(Experiment):
             ctypes.windll.user32.MessageBoxW(0, f'MCNP loop has already been completed for this detector', 'MCNP loop completed', 0)
             return
 
-        # Create the dcg input file and use MakeDCGTools executable to generate the
-        # file with the points for the MCNP simulations
-        dcg_filename = self.detector.create_point_dcgfile(self.folder_name)
-        subprocess.call(['P:\ISOCSProduction\Codes\MakeDCGTools\MakeDCGTools_v1_2.exe', dcg_filename])
+        lock_file = self._lock_file_path()
+        if os.path.isfile(lock_file):
+            ctypes.windll.user32.MessageBoxW(0, f'MCNP is already running for this detector', 'MCNP running', 0)
+            return
 
-        name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_Ref_Pnt_Coo.TXT')
-        backup_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_Ref_Pnt_Coo_backup.TXT')
-        # The file created from MakeDCGTools has the wrong format
-        # so it needs to be reformatted.
-        self.reformat_pnt_file(name, backup_name)
-        # Add any detector specific points to the points file.
-        self.detector.add_characterization_points(name)
+        param_file = os.path.join(self.folder_name, f'{self.detector.serialnumber}_char_bg_params.txt')
+        self.write_bg_param_file(param_file, iter_sheet.book.fullname)
 
-        queued = []
-        completed = {}
-        previous = {}
+        with open(lock_file, 'w') as lockfile:
+            lockfile.write(f'{datetime.datetime.now()}\n')
 
-        # Check if .outfile exist and read the results from previous run
+        # Best effort only, the background process clears this when it finishes.
+        utilities.set_mcnp_running(iter_sheet, 1)
+
+        characterization_script = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'characterization.py')
+        subprocess.Popen(
+            [sys.executable, characterization_script, '--run-background', param_file],
+            creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+            close_fds=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
+    def run_loop(self, workbook_fullname=''):
+        """
+        Runs the MCNP submission and monitoring loop for the characterization.
+        Does not require an Excel connection - intended to be called from the
+        detached background process started by run().
+
+        Parameters
+        ----------
+        workbook_fullname : string, optional
+            Full path of the Excel workbook that started this run. If given,
+            a best-effort attempt is made to reconnect and clear the "MCNP
+            running" flag when this finishes; if Excel/the workbook isn't
+            reachable this is silently skipped.
+
+        Returns
+        -------
+        None.
+
+        """
+
+        start_time = datetime.datetime.now()
         outfile_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_char.out')
-        logfile_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}.log')
-        if os.path.isfile(outfile_name):
-            ret_value = ctypes.windll.user32.MessageBoxW(0, f'A previous MCNP loop has been started.\nDo you want to try to continue previus loop?', 'Previous run detected', 4)
-            if ret_value == 6:
-                with open(outfile_name, 'r') as outfile:
-                    for line in outfile:
-                        result = Result.from_string(line)
-                        key = result.get_coordinates()
-                        previous[key] = result
+        try:
+            # Create the dcg input file and use MakeDCGTools executable to generate the
+            # file with the points for the MCNP simulations
+            dcg_filename = self.detector.create_point_dcgfile(self.folder_name)
+            subprocess.call(['P:\ISOCSProduction\Codes\MakeDCGTools\MakeDCGTools_v1_2.exe', dcg_filename])
+
+            name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_Ref_Pnt_Coo.TXT')
+            backup_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}_Ref_Pnt_Coo_backup.TXT')
+            # The file created from MakeDCGTools has the wrong format
+            # so it needs to be reformatted.
+            self.reformat_pnt_file(name, backup_name)
+            # Add any detector specific points to the points file.
+            self.detector.add_characterization_points(name)
+
+            queued = []
+            completed = {}
+            previous = {}
+
+            # Check if .outfile exist and read the results from previous run
+            logfile_name = os.path.join(self.folder_name, f'{self.detector.serialnumber}.log')
+            if os.path.isfile(outfile_name):
+                ret_value = ctypes.windll.user32.MessageBoxW(0, f'A previous MCNP loop has been started.\nDo you want to try to continue previus loop?', 'Previous run detected', 4)
+                if ret_value == 6:
+                    with open(outfile_name, 'r') as outfile:
+                        for line in outfile:
+                            result = Result.from_string(line)
+                            key = result.get_coordinates()
+                            previous[key] = result
+                else:
+                    time.sleep(0.5)
+                    os.remove(outfile_name)
+                    if os.path.isfile(logfile_name):
+                        time.sleep(0.5)
+                        os.remove(logfile_name)
+
+            # Create sources and populate the queued list if the point/energy was not completed
+            # in a previos run
+            counter = 0
+            with open(name, 'r') as dcg_file:
+                for line in dcg_file:
+                    # remove multiple whitespaces
+                    line = ' '.join(line.split())
+                    r = float(line.split()[0])
+                    theta = float(line.split()[1])
+                    x = r * np.sin(np.deg2rad(theta))
+                    y = 0.0
+                    z = -r * np.cos(np.deg2rad(theta))
+                    for energy in self.parfile_energies:
+                        key = (r, theta, 0.0, energy)
+                        if key in previous:
+                            completed[counter] = previous.pop(key)
+                        else:
+                            queued.append(PointSource(energy, counter,
+                                                      self.defaulthist, x, y, z))
+                        counter += 1
+
+            # If not all previous simulations has been accounted for there was
+            # a mismatch between the two points file and the loop needs to be aborted.
+            if len(previous) != 0:
+                ctypes.windll.user32.MessageBoxW(0, f'Missmatch between previous and current points file', 'Points missmatch', 0)
+                return
+
+            print(len(queued))
+
+            # Set the queue folders
+            if self.queue.lower() == 'alpha':
+                inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerA_Local\InQueue'
+                outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerA_Local\OutQueue'
+            elif self.queue.lower() == 'bravo':
+                inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerB_Local\InQueue'
+                outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerB_Local\OutQueue'
+            elif self.queue.lower() == 'charlie':
+                inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\InQueue'
+                outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\OutQueue'
+            elif self.queue.lower() == 'xray':
+                inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerX_Local\InQueue'
+                outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerX_Local\OutQueue'	
+            elif self.queue.lower() == 'delta':
+                inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerD_Local\InQueue'
+                outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerD_Local\OutQueue'	
             else:
-                os.remove(outfile_name)
-                if os.path.isfile(logfile_name):
-                    os.remove(logfile_name)
+                ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.queue}', 'Unknown queue', 0)
+                return
 
-        # Create sources and populate the queued list if the point/energy was not completed
-        # in a previos run
-        counter = 0
-        with open(name, 'r') as dcg_file:
-            for line in dcg_file:
-                # remove multiple whitespaces
-                line = ' '.join(line.split())
-                r = float(line.split()[0])
-                theta = float(line.split()[1])
-                x = r * np.sin(np.deg2rad(theta))
-                y = 0.0
-                z = -r * np.cos(np.deg2rad(theta))
-                for energy in self.parfile_energies:
-                    key = (r, theta, 0.0, energy)
-                    if key in previous:
-                        completed[counter] = previous.pop(key)
-                    else:
-                        queued.append(PointSource(energy, counter,
-                                                  self.defaulthist, x, y, z))
-                    counter += 1
+            if len(queued) > 0:
+                with open(outfile_name, 'a') as outfile, open(logfile_name, 'a', buffering=1) as logfile:
 
-        # If not all previous simulations has been accounted for there was
-        # a mismatch between the two points file and the loop needs to be aborted.
-        if len(previous) != 0:
-            ctypes.windll.user32.MessageBoxW(0, f'Missmatch between previous and current points file', 'Points missmatch', 0)
-            return
+                    if self.debug:
+                        if not os.path.isdir(os.path.join(self.folder_name, 'debug')):
+                            os.mkdir(os.path.join(self.folder_name, 'debug'))
 
-        print(len(queued))
+                    logfile.write(f'{datetime.datetime.now()}Starting loop with {len(queued)} files\n')
 
-        # Set the queue folders
-        if self.queue.lower() == 'alpha':
-            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerA_Local\InQueue'
-            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerA_Local\OutQueue'
-        elif self.queue.lower() == 'bravo':
-            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerB_Local\InQueue'
-            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerB_Local\OutQueue'
-        elif self.queue.lower() == 'charlie':
-            inque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\InQueue'
-            outque_folder = r'\\mer-vs-fs01\ISOCS_FARM\ManagerC_Local\OutQueue'
-        else:
-            ctypes.windll.user32.MessageBoxW(0, f'Unknown queue: {self.queue}', 'Unknown queue', 0)
-            return
+                    # Start the Tk window that takes care of submitting and
+                    # recieving the mcnp simulations
+                    app = Window(self, queued, completed,
+                                 inque_folder, outque_folder, outfile, logfile)
 
-        if len(queued) > 0:
-            with open(outfile_name, 'a') as outfile, open(logfile_name, 'a', buffering=1) as logfile:
+                    app.after(100, app.submit_files)
+                    app.mainloop()
+                    app.destroy()
 
-                if self.debug:
-                    if not os.path.isdir(os.path.join(self.folder_name, 'debug')):
-                        os.mkdir(os.path.join(self.folder_name, 'debug'))
+                    if app.aborted:
+                        return
 
-                # Set the flag that the loop is running
-                utilities.set_mcnp_running(iter_sheet, 1)
+                    end_time = datetime.datetime.now()
+                    runtime = int((end_time - start_time).total_seconds())
+                    print(runtime)
+                    logfile.write(f'\nTotal Running time was {runtime} seconds\n')
 
-                logfile.write(f'{datetime.datetime.now()}Starting loop with {len(queued)} files\n')
+                    if app.lost_particles:
+                        ctypes.windll.user32.MessageBoxW(0, 'Some runs was stopped because of lost particles. Proceed with caution or restart with higher max lost particles', 'Lost particles', 0)
 
-                # Start the Tk window that takes care of submitting and
-                # recieving the mcnp simulations
-                app = Window(self, queued, completed,
-                             inque_folder, outque_folder, outfile, logfile)
+            shutil.copy(outfile_name, os.path.join(self.folder_name, f'{self.detector.serialnumber}_char_backup.out'))
+            with open(os.path.join(self.folder_name, f'{self.detector.serialnumber}.out'), 'w') as outfile:
+                for res in sorted(completed.values()):
+                    res.type=''
+                    outfile.write(f'{str(res)}\n')
 
-                app.after(100, app.process_mcnp)
-                app.mainloop()
-                app.destroy()
-
-                # Clear the flag that the loop is running
-                utilities.set_mcnp_running(iter_sheet, 0)
-
-                if app.aborted:
+            # Set the values expected by the Check Loop Status button so that it can
+            # figure out that the loop was completed
+            with open(os.path.join(self.folder_name, f'{self.detector.serialnumber}.end'), 'w') as endfile:
+                endfile.write('\n')
+        finally:
+            try:
+                os.remove(self._lock_file_path())
+            except FileNotFoundError:
+                pass
+            if workbook_fullname:
+                try:
+                    wb = xw.Book(workbook_fullname)
+                    iter_sheet = utilities.sheet_from_name(wb, 'Iterations')
                     utilities.set_mcnp_running(iter_sheet, 0)
-                    return
-
-                end_time = datetime.datetime.now()
-                runtime = int((end_time - start_time).total_seconds())
-                print(runtime)
-                logfile.write(f'\nTotal Running time was {runtime} seconds\n')
-
-                if app.lost_particles:
-                    ctypes.windll.user32.MessageBoxW(0, 'Some runs was stopped because of lost particles. Proceed with caution or restart with higher max lost particles', 'Lost particles', 0)
-
-        shutil.copy(outfile_name, os.path.join(self.folder_name, f'{self.detector.serialnumber}_char_backup.out'))
-        with open(os.path.join(self.folder_name, f'{self.detector.serialnumber}.out'), 'w') as outfile:
-            for res in sorted(completed.values()):
-                res.type=''
-                outfile.write(f'{str(res)}\n')
-
-        # Set the values expected by the Check Loop Status button so that it can
-        # figure out that the loop was completed
-        #with open(os.path.join(self.folder_name, f'{self.detector.serialnumber}.log'), 'w') as logfile:
-        #    logfile.write(f'\nTotal Running time was {runtime} seconds\n')
-        with open(os.path.join(self.folder_name, f'{self.detector.serialnumber}.end'), 'w') as endfile:
-            endfile.write('\n')
+                except Exception:
+                    pass
 
     def reformat_pnt_file(self, file_name, backup_name):
         """
@@ -967,6 +1175,16 @@ class Window(tk.Tk):
         elif self.experiment.priority == 2:
             self.extension = 'i2'
         self.finished = False
+        self.aborted = False
+        self.lost_particles = False
+        self.logfile = logfile
+        # Guards self.queued/self.submitted/self.completed, mutated from multiple worker threads.
+        self.state_lock = threading.Lock()
+        # TODO: These values should probably not be hardcoded but be parameters from the spread sheet
+        self.number_of_threads = 4
+        self.max_files_to_submit = 100
+        self.max_files_to_process = 50
+        self.submit_files_threshold = 200
 
         # The window layout.
         self.info_frame = tk.LabelFrame(self, text='Information')
@@ -990,134 +1208,239 @@ class Window(tk.Tk):
         self.progress_bar['maximum'] = len(queued) + len(completed)
         self.button = tk.Button(self, text='Abort', command=self.abort)
         self.button.grid(row=2, column=0)
-        self.aborted = False
-        self.lost_particles = False
-        self.logfile = logfile
 
-    def process_mcnp(self):
+    def submit_files(self) -> None:
         """
-        Submit new files if the manager is requesting more and process
-        the files that the manager has completed.
+        Submit files to the ISOCS farm.
 
+        When the function finishes process_mcnp is called
+
+        """
+        try:
+            with self.state_lock:
+                number_of_sources = len(self.queued)
+                files_to_produce = min(self.max_files_to_submit, number_of_sources)
+                sources = [self.queued.pop(0) for _ in range(files_to_produce)]
+
+            with ThreadPoolExecutor(max_workers=self.number_of_threads) as executor:
+                list(executor.map(self.submit_one_file, sources))
+
+            with self.state_lock:
+                queued_len = len(self.queued)
+                submitted_len = len(self.submitted)
+            self.queued_label['text'] = f'Queued: {queued_len}'
+            self.submitted_label['text'] = f'Submitted: {submitted_len}'
+            self.completed_label['text'] = f'Finished: {len(self.completed)}'
+            self.progress_bar['value'] = len(self.completed)
+        except Exception as e:
+            traceback.print_exc(file=self.logfile)
+        finally:
+            # Always reschedule, otherwise an error here silently ends the whole loop.
+            self.after(1000, self.process_mcnp)
+
+
+    def submit_one_file(self, source: Source) -> None:
+        """Submit one MCNP file to the ISOCS farm
+
+        Parameters:
+            source (Source): The description of the source that the MCNP file will be created from.
+        """
+        
+        try:
+            base_file_name = f'{self.experiment.detector.serialnumber}_{source.counter}.{self.extension}'
+            file_name = os.path.join(self.experiment.folder_name, base_file_name)
+            self.experiment.detector.create_input_file(source, file_name, self.experiment.full_detector)
+            dest_name = os.path.join(self.inque_folder, base_file_name)
+            if self.experiment.debug:
+                shutil.copy(file_name, os.path.join(self.experiment.folder_name, 'debug', base_file_name))
+            shutil.move(file_name, dest_name)
+            with self.state_lock:
+                self.submitted[source.counter] = source
+
+        except Exception as e:
+            self.logfile.write(f'{datetime.datetime.now()} Error encountered when submitting file {base_file_name}, requeing it\n')
+            # The file may not be present if there is an error before it was created
+            try:
+                os.remove(file_name)
+            except Exception as error:
+                self.logfile.write(f'{datetime.datetime.now()} Not able to delete {base_file_name}\n')
+
+            with self.state_lock:
+                self.queued.insert(0, (source))
+            self.logfile.write(f'{datetime.datetime.now()} Clean up of {base_file_name} complete\n')
+
+
+    def process_mcnp(self) -> None:
+        """
+        Process MCNP output files and resubmits them if there are any errors or if the relative
+        uncertainties are too low. If the relative uncertainty is low enough the result is
+        added to the out file.
+
+        At the end of the function
+        If all MCNP runs have been processed the loop will exit
+        If there are less than 200 files submitted, submit files will be called
+        else calls itself again.
+        
         Returns
         -------
         None.
 
         """
-        #self.logfile.write(f'{datetime.datetime.now()} Entering process mcnp\n')
-        files_submitted = 0
-        if len(self.queued) > 0 and os.path.isfile(os.path.join(self.outque_folder, 'MoreFilesPlease.txt')):
-            #self.logfile.write(f'{datetime.datetime.now()} More files requested\n')
-            while files_submitted < self.experiment.max_submitted:
-                if len(self.queued) == 0:
-                    break
-                source = self.queued.pop(0)
-                #self.logfile.write(f'{datetime.datetime.now()} Trying to create {source.counter} with nps {source.nps}\n')
-                base_file_name = f'{self.experiment.detector.serialnumber}_{source.counter}.{self.extension}'
-                file_name = os.path.join(self.experiment.folder_name, base_file_name)
-                self.experiment.detector.create_input_file(source, file_name, self.experiment.full_detector)
-                dest_name = os.path.join(self.inque_folder, base_file_name)
-                #self.logfile.write(f'{datetime.datetime.now()} Created {source.counter} with nps {source.nps}\n')
+        results = []
+        try:
+            filelist = glob.glob(os.path.join(self.outque_folder, f'{self.experiment.detector.serialnumber}_*.o'))
+            files_to_process = min(self.max_files_to_process, len(filelist))
+
+            def _counter_key(path):
+                # Fall back to the name itself so a malformed filename can't crash the sort.
                 try:
-                    if self.experiment.debug:
-                        shutil.copy(file_name, os.path.join(self.experiment.folder_name, 'debug', base_file_name))
-                    shutil.move(file_name, dest_name)
-                    self.submitted[source.counter] = source
-                    files_submitted += 1
-                    self.logfile.write(f'{datetime.datetime.now()} Submitted {source.counter} with nps {source.nps}\n')
+                    return (0, int(os.path.basename(path).split('_')[-1].split('.')[0]))
+                except (ValueError, IndexError):
+                    return (1, path)
 
-                except:
-                    self.logfile.write(f'{datetime.datetime.now()} Error encountered when moving file {base_file_name}\n')
-                    os.remove(file_name)
-                    self.queued.insert(0, (source))
+            filelist = sorted(filelist, key=_counter_key)
+            filelist = filelist[:files_to_process]
+            with ThreadPoolExecutor(max_workers=self.number_of_threads) as executor:
+                results = list(executor.map(self.process_one_file, filelist))
 
-        #self.logfile.write(f'{datetime.datetime.now()} {files_submitted} files submitted\n')
-        filelist = glob.glob(os.path.join(self.outque_folder, f'{self.experiment.detector.serialnumber}_*.o'))
-        #self.logfile.write(f'{datetime.datetime.now()} Processing {len(filelist)} files\n')
-        for file in filelist:
+            # Write results to file
+            for res in results:
+                if not res is None:
+                    self.outfile.write(str(res) + '\n')
+
+            self.outfile.flush()
+            self.logfile.flush()
+        except Exception as e:
+            traceback.print_exc(file=self.logfile)
+
+        try:
+            with self.state_lock:
+                queued_len = len(self.queued)
+                submitted_len = len(self.submitted)
+
+            if queued_len == 0 and submitted_len == 0:
+                self.finished = True
+                self.quit()
+                return
+
+            self.logfile.write(f'{datetime.datetime.now()} queued={queued_len}, submitted={submitted_len}, finished={len(self.completed)}\n')
+            self.queued_label['text'] = f'Queued: {queued_len}'
+            self.submitted_label['text'] = f'Submitted: {submitted_len}'
+            self.completed_label['text'] = f'Finished: {len(self.completed)}'
+            self.progress_bar['value'] = len(self.completed)
+
+            if submitted_len < 200 and queued_len > 0:
+                self.after(100, self.submit_files)
+            else:
+                self.after(1000, self.process_mcnp)
+        except Exception as e:
+            # Still reschedule so a transient error here can't silently end the whole loop.
+            traceback.print_exc(file=self.logfile)
+            self.after(1000, self.process_mcnp)
+
+
+    def process_one_file(self, file:str) -> Union['Result', None]:
+        """ Process a single MCNP simulation. Move the file from the out queue to the current folder.
+        Open the MCNP file and check the relative uncertainty if it is below the threshold. If not
+        calculate a new NPS and resubmit. If it is below extract the results and return them.
+        Check if the simulation produced lost particles, then either increase the lost particle
+        MCNP parameter or log the result. 
+
+        Parameters
+        ----------
+        file : str
+            The path to the MCNP output file
+         
+        Returns:
+            Result or None: Result contains from the MCNP simulation. If there was an error or if the simulation needs to be resubmitted it will return None
+        """
+        try:
+            res = None
+
+            # Move the file from the inqueue
             try:
                 shutil.move(file, os.path.join(self.experiment.folder_name, os.path.basename(file)))
             except PermissionError:
                 self.logfile.write(f'{datetime.datetime.now()} Permission Error {file}\n')
-                continue
-            with open(os.path.join(self.experiment.folder_name, os.path.basename(file))) as iostream:
+                return None
+
+
+            # Get the counter and make sure that it is in submitted, if not log that something is wrong.
+            counter = int(os.path.basename(file).split('_')[-1].split('.')[0])
+            with self.state_lock:
                 try:
-                    counter = int(os.path.basename(file).split('_')[-1].split('.')[0])
                     source = self.submitted.pop(counter)
-                    tally = mcnp.f8tally(iostream, 8)
-                    if len(tally.efficiencies) > 0:
-                        if (tally.uncertainties[5] < self.experiment.errlimit and tally.efficiencies[5] > 0.0) or source.nps == self.experiment.maxhist:
-                            self._write_tally_result_to_file(tally, source, counter)
-                            # r = source.r
-                            # phi = source.phi
-                            # theta = 180 - np.rad2deg(source.theta)
-                            # eff = tally.efficiencies[5] if tally.efficiencies[5] > 0.0 else source.weight(self.experiment.detector) / source.nps
-                            # unc = tally.uncertainties[5] if tally.uncertainties[5] > 0.0 else 10.0
-                            # total_eff = tally.total_efficiency() if tally.total_efficiency() > 0.0 else source.weight(self.experiment.detector) / source.nps
-                            # total_eff_unc = tally.total_efficiency_uncertainty() if tally.total_efficiency_uncertainty() > 0.0 else 10.0
-                            # peak_to_total = eff/total_eff if total_eff > 0.0 else 0.0
-                            # seconds = tally.run_time
-                            # res = Result(r, theta, phi, source.energy, eff,
-                            #              unc, total_eff, total_eff_unc,
-                            #              peak_to_total, source.nps, seconds,
-                            #              source.type, source)
-                            # self.completed[counter] = res
-                            # self.outfile.write(str(res) + '\n')
-                            self.logfile.write(f'{datetime.datetime.now()} Finished {counter}\n')
+                except KeyError:
+                    in_queued = any(counter == s.counter for s in self.queued)
+                    source = None
+            if source is None:
+                self.logfile.write(f'Warning: {counter} not in submitted, {counter} is in queued {in_queued}, deleting file\n')
+                os.remove(os.path.join(self.experiment.folder_name, os.path.basename(file)))
+                return None
+
+            # open the file and extract the f8 tally
+            try:
+                with open(os.path.join(self.experiment.folder_name, os.path.basename(file))) as iostream:
+                    try:
+                        tally = mcnp.f8tally(iostream, 8)
+                        iostream.close()
+                    # If there are lost particles we need to handle it.
+                    except ValueError:
+                        if source.max_lost_particles < self.experiment.max_lost_particles:
+                            source.max_lost_particles = self.experiment.max_lost_particles
+                            self.logfile.write(f'{datetime.datetime.now()} Resubmitted {source.counter} with nps {source.nps} and lost {source.max_lost_particles}\n')
+                            with self.state_lock:
+                                self.queued.insert(0, (source))
+                            iostream.close()
                         else:
-                            if tally.uncertainties[5] == 0.0:
-                                new_nps = self.experiment.maxhist
-                            else:
-                                new_nps = int((tally.uncertainties[5] / self.experiment.errlimit) **2 * source.nps * 1.1)
-                                if new_nps > self.experiment.maxhist:
-                                    new_nps = self.experiment.maxhist
-                            source.nps = new_nps
-                            # insert at the front of the queue
-                            self.queued.insert(0, (source))
-                            self.logfile.write(f'{datetime.datetime.now()} Requeued {counter} with nps {source.nps}\n')
+                            self.lost_particles = True
+                            tally = mcnp.f8tally(iostream, 8, ignore_lost_particles=True)
+                            self.logfile.write(f'{datetime.datetime.now()} Simulation {counter} finished because of lost particles but was still written to out file.\n')
+                            iostream.close()
+                            shutil.copy(os.path.join(self.experiment.folder_name, os.path.basename(file)), os.path.join(self.experiment.folder_name, f'lost_particles_{source.counter}.o'))
+                            res = self._write_tally_result_to_file(tally, source, counter)
+                        if self.experiment.debug:
+                            shutil.move(os.path.join(self.experiment.folder_name, os.path.basename(file)), os.path.join(self.experiment.folder_name, 'debug', os.path.basename(file)))
+                        else:
+                            os.remove(os.path.join(self.experiment.folder_name, os.path.basename(file)))
+                        return res
+
+            except Exception as e:
+                self.logfile.write(f'Error opening {os.path.basename(file)}, resubmitting')
+                with self.state_lock:
+                    self.queued.insert(0, source)
+                os.remove(os.path.join(self.experiment.folder_name, os.path.basename(file)))
+                return None
+
+            # process the tally
+            if len(tally.efficiencies) > 0:
+                if (tally.uncertainties[5] < self.experiment.errlimit and tally.efficiencies[5] > 0.0) or source.nps == self.experiment.maxhist:
+                    res = self._write_tally_result_to_file(tally, source, counter)
+                else:
+                    if tally.uncertainties[5] == 0.0:
+                        new_nps = self.experiment.maxhist
                     else:
-                        self.logfile.write(f'{datetime.datetime.now()} Empty tally, requeued {counter}\n')
+                        new_nps = int((tally.uncertainties[5] / self.experiment.errlimit) **2 * source.nps * 1.1)
+                        if new_nps > self.experiment.maxhist:
+                            new_nps = self.experiment.maxhist
+                    source.nps = new_nps
+                    # insert at the front of the queue
+                    with self.state_lock:
                         self.queued.insert(0, (source))
-                    iostream.close()
-                    if self.experiment.debug:
-                        shutil.move(os.path.join(self.experiment.folder_name, os.path.basename(file)), os.path.join(self.experiment.folder_name, 'debug', os.path.basename(file)))
-                    else:
-                        os.remove(os.path.join(self.experiment.folder_name, os.path.basename(file)))
-                except ValueError:
-                    if source.max_lost_particles < self.experiment.max_lost_particles:
-                        source.max_lost_particles = self.experiment.max_lost_particles
-                        self.logfile.write(f'{datetime.datetime.now()} Resubmitted {source.counter} with nps {source.nps} and lost {source.max_lost_particles}\n')
-                        self.queued.insert(0, (source))
-                        iostream.close()
-                    else:
-                        self.lost_particles = True
-                        # counter = int(os.path.basename(file).split('_')[-1].split('.')[0])
-                        # source = self.submitted.pop(counter)
-                        tally = mcnp.f8tally(iostream, 8, ignore_lost_particles=True)
-                        self._write_tally_result_to_file(tally, source, counter)
-                        self.logfile.write(f'{datetime.datetime.now()} Simulation {counter} finished because of lost particles but was still written to out file.\n')
-                        iostream.close()
-                        shutil.copy(os.path.join(self.experiment.folder_name, os.path.basename(file)), os.path.join(self.experiment.folder_name, f'lost_particles_{source.counter}.o'))
-                    if self.experiment.debug:
-                        shutil.move(os.path.join(self.experiment.folder_name, os.path.basename(file)), os.path.join(self.experiment.folder_name, 'debug', os.path.basename(file)))
-                    else:
-                        os.remove(os.path.join(self.experiment.folder_name, os.path.basename(file)))
+                    self.logfile.write(f'{datetime.datetime.now()} Requeued {counter} with nps {source.nps}\n')
+            else:
+                self.logfile.write(f'{datetime.datetime.now()} Empty tally, requeued {counter}\n')
+                with self.state_lock:
+                    self.queued.insert(0, (source))
+            if self.experiment.debug:
+                shutil.move(os.path.join(self.experiment.folder_name, os.path.basename(file)), os.path.join(self.experiment.folder_name, 'debug', os.path.basename(file)))
+            else:
+                os.remove(os.path.join(self.experiment.folder_name, os.path.basename(file)))
 
-        if len(self.queued) == 0 and len(self.submitted) == 0:
-            self.finished = True
-            self.quit()
+            return res
+        except Exception as e:
+            traceback.print_exc(file=self.logfile)
 
-        self.logfile.write(f'{datetime.datetime.now()} queued={len(self.queued)}, submitted={len(self.submitted)}, finished={len(self.completed)}\n')
-        self.queued_label['text'] = f'Queued: {len(self.queued)}'
-        self.submitted_label['text'] = f'Submitted: {len(self.submitted)}'
-        self.completed_label['text'] = f'Finished: {len(self.completed)}'
-        self.progress_bar['value'] = len(self.completed)
-
-        self.outfile.flush()
-        self.logfile.flush()
-
-        #self.logfile.write('Process MCNP finished\n')
-        self.after(1000, self.process_mcnp)
 
     def abort(self, message='Aborted by user'):
         """
@@ -1171,8 +1494,10 @@ class Window(tk.Tk):
                      unc, total_eff, total_eff_unc,
                      peak_to_total, source.nps, seconds,
                      source.type, source)
-        self.completed[counter] = res
-        self.outfile.write(str(res) + '\n')
+        with self.state_lock:
+            self.completed[counter] = res
+        return res
+        #self.outfile.write(str(res) + '\n')
 
 class Result:
     def __init__(self, r, theta, phi, energy, eff, unc, total_eff, total_eff_unc, peak_to_total, nps, seconds, type, source=None):
