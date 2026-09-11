@@ -520,154 +520,180 @@ class Iteration(Experiment):
 
 
             # Compare the modeled and measured efficiencies
-            outfile.seek(0)
-            outfile.truncate()
-            previous_type = ''
-            column = iteration_sheet.range((start_row + 11, 1), (start_row + 11, iteration_sheet.cells.last_cell.column)).end('right').column + 1
-            eff_range = iteration_sheet.range((start_row, 3), (end_row, 3))
-            unc_range = iteration_sheet.range((start_row, 4), (end_row, 4))
-            res_range = iteration_sheet.range((start_row, column), (end_row, column + 1))
-            efficiencies = np.zeros(len(eff_range))
-            one_sigma = 0
-            two_sigma = 0
-            valid_measurements = 0
+            app_excel = iteration_sheet.book.app
+            app_excel.screen_updating = False
+            app_excel.calculation = 'manual'
+            app_excel.api.EnableEvents = False
+            try:
+                outfile.seek(0)
+                outfile.truncate()
+                previous_type = ''
+                column = iteration_sheet.range((start_row + 11, 1), (start_row + 11, iteration_sheet.cells.last_cell.column)).end('right').column + 1
+                eff_range = iteration_sheet.range((start_row, 3), (end_row, 3))
+                unc_range = iteration_sheet.range((start_row, 4), (end_row, 4))
+                res_range = iteration_sheet.range((start_row, column), (end_row, column + 1))
+                efficiencies = np.zeros(len(eff_range))
+                one_sigma = 0
+                two_sigma = 0
+                valid_measurements = 0
 
-            experiments = collections.OrderedDict()
-            energy_counter = 1
-            for counter in sorted(completed):
-                res = completed[counter]
-                if res.type != previous_type:
-                    outfile.write(f'Experimental Point: {res.type}\n')
-                    if previous_type != '':
-                        experiments[completed[counter - 1]] = energy_counter
-                        energy_counter = 1
-                    previous_type = res.type
-                else:
-                    energy_counter += 1
-                outfile.write(str(res) + '\n')
-                if res.type == 'DR':
-                    eff_ratio = res.eff / eff_range[counter].value / 0.0012 if eff_range[counter].value is not None else 0
-                else:
-                    eff_ratio = res.eff / eff_range[counter].value if eff_range[counter].value is not None else 0
-                #TODO: decide on which uncertainty to display on the tab
-                # The CharTables tab assumes that the relative uncertainty in the ratio is displayed
-                # leaving it as that for now.
-                rel_unc_ratio = np.sqrt((res.unc)**2 + (unc_range[counter].value/100.0)**2 + res.source.geometry_error**2) if unc_range[counter].value is not None else 0
-                unc_ratio = eff_ratio * rel_unc_ratio
-                res_range[counter, 0].value = eff_ratio
-                res_range[counter, 1].value = rel_unc_ratio
-                if not self.low_energy_validation and res.energy < utilities.low_energy_cutoff.get(res.type, 13.8):
-                    res_range[counter, 0].api.Interior.ColorIndex = 20
-                    res_range[counter, 1].api.Interior.ColorIndex = 20
-                elif np.abs(eff_ratio - 1.0) > 2.0*unc_ratio:
-                    one_sigma += 1
-                    two_sigma += 1
-                    res_range[counter, 0].api.Interior.ColorIndex = 3
-                    valid_measurements += 1
-                elif np.abs(eff_ratio - 1.0) > unc_ratio:
-                    one_sigma += 1
-                    res_range[counter, 0].api.Interior.ColorIndex = 6
-                    valid_measurements += 1
-                else:
-                    valid_measurements += 1
-                efficiencies[counter] = eff_ratio
+                experiments = collections.OrderedDict()
+                energy_counter = 1
+                for counter in sorted(completed):
+                    res = completed[counter]
+                    if res.type != previous_type:
+                        outfile.write(f'Experimental Point: {res.type}\n')
+                        if previous_type != '':
+                            experiments[completed[counter - 1]] = energy_counter
+                            energy_counter = 1
+                        previous_type = res.type
+                    else:
+                        energy_counter += 1
+                    outfile.write(str(res) + '\n')
+                    if res.type == 'DR':
+                        eff_ratio = res.eff / eff_range[counter].value / 0.0012 if eff_range[counter].value is not None else 0
+                    else:
+                        eff_ratio = res.eff / eff_range[counter].value if eff_range[counter].value is not None else 0
+                    #TODO: decide on which uncertainty to display on the tab
+                    # The CharTables tab assumes that the relative uncertainty in the ratio is displayed
+                    # leaving it as that for now.
+                    rel_unc_ratio = np.sqrt((res.unc)**2 + (unc_range[counter].value/100.0)**2 + res.source.geometry_error**2) if unc_range[counter].value is not None else 0
+                    unc_ratio = eff_ratio * rel_unc_ratio
+                    res_range[counter, 0].value = eff_ratio
+                    res_range[counter, 1].value = rel_unc_ratio
+                    if not self.low_energy_validation and res.energy < utilities.low_energy_cutoff.get(res.type, 13.8):
+                        res_range[counter, 0].api.Interior.ColorIndex = 20
+                        res_range[counter, 1].api.Interior.ColorIndex = 20
+                    elif np.abs(eff_ratio - 1.0) > 2.0*unc_ratio:
+                        one_sigma += 1
+                        two_sigma += 1
+                        res_range[counter, 0].api.Interior.ColorIndex = 3
+                        valid_measurements += 1
+                    elif np.abs(eff_ratio - 1.0) > unc_ratio:
+                        one_sigma += 1
+                        res_range[counter, 0].api.Interior.ColorIndex = 6
+                        valid_measurements += 1
+                    else:
+                        valid_measurements += 1
+                    efficiencies[counter] = eff_ratio
+            finally:
+                app_excel.screen_updating = True
+                app_excel.calculation = 'automatic'
+                app_excel.api.EnableEvents = True
 
         experiments[res] = energy_counter
         end_time = datetime.datetime.now()
         iteration = int((column - 5) / 2 + 1)
-        chart = iteration_sheet.charts[0]
-        first = True
-        first_energy = start_row
-        for res in experiments:
-            energies = experiments[res]
-            last_energy = first_energy + energies - 1
-            a = iteration_sheet.range((first_energy, 2)).get_address(False, False)
-            b = iteration_sheet.range((last_energy,2)).get_address(False, False)
-            c = iteration_sheet.range((first_energy, column)).get_address(False, False)
-            d = iteration_sheet.range((last_energy, column)).get_address(False, False)
-            range_string = f'{a}:{b}, {c}:{d}'
-            chart_range = iteration_sheet.range(range_string)
-            e = iteration_sheet.range((first_energy, column+1)).get_address(False, False)
-            f = iteration_sheet.range((last_energy,column+1)).get_address(False, False)
-            error_range_string = f'{e}:{f}'
-            error_range = iteration_sheet.range(error_range_string)
-            error_range_array = utilities.range_to_array(error_range, float)
-            if first:
-                chart.set_source_data(chart_range)
-                chart.title = ''
-                first = False
-                number = chart.api[1].SeriesCollection().count
+
+        app_excel = iteration_sheet.book.app
+        # Chart COM operations (SetSourceData / SeriesCollection) need to actually
+        # repaint to finish initializing; ScreenUpdating=False makes them hang.
+        app_excel.screen_updating = True
+        app_excel.calculation = 'manual'
+        app_excel.api.EnableEvents = False
+        try:
+            chart = iteration_sheet.charts[0]
+            first = True
+            first_energy = start_row
+            for res in experiments:
+                energies = experiments[res]
+                last_energy = first_energy + energies - 1
+                a = iteration_sheet.range((first_energy, 2)).get_address(False, False)
+                b = iteration_sheet.range((last_energy,2)).get_address(False, False)
+                c = iteration_sheet.range((first_energy, column)).get_address(False, False)
+                d = iteration_sheet.range((last_energy, column)).get_address(False, False)
+                range_string = f'{a}:{b}, {c}:{d}'
+                chart_range = iteration_sheet.range(range_string)
+                e = iteration_sheet.range((first_energy, column+1)).get_address(False, False)
+                f = iteration_sheet.range((last_energy,column+1)).get_address(False, False)
+                error_range_string = f'{e}:{f}'
+                error_range = iteration_sheet.range(error_range_string)
+                error_range_array = utilities.range_to_array(error_range, float)
+                if first:
+                    chart.set_source_data(chart_range)
+                    chart.title = ''
+                    first = False
+                    # SetSourceData just (re)built the chart from scratch, so this is
+                    # necessarily series 1 - avoid calling SeriesCollection().count here,
+                    # that specific call deadlocks Excel's chart engine.
+                    number = 1
+                else:
+                    chart.api[1].SeriesCollection().Add(f'{iteration_sheet.range((first_energy, column)).get_address(False, False)}:{iteration_sheet.range((last_energy,column)).get_address(False, False)}')
+                    # Add() always appends, so this is just the previous count + 1 -
+                    # avoid SeriesCollection().count here too, same hang as above.
+                    number += 1
+                    chart.api[1].SeriesCollection(number).XValues = utilities.range_to_array(iteration_sheet.range((first_energy, 2), (last_energy, 2)), float)
+                chart.api[1].SeriesCollection(number).Name = res.source.type
+                chart.api[1].SeriesCollection(number).MarkerStyle = res.source.marker
+                chart.api[1].SeriesCollection(number).MarkerSize = 4
+                chart.api[1].SeriesCollection(number).Border.ColorIndex = res.source.FColor
+                chart.api[1].SeriesCollection(number).MarkerBackgroundColorIndex = res.source.BColor
+                chart.api[1].SeriesCollection(number).MarkerForegroundColorIndex = res.source.FColor
+                chart.api[1].SeriesCollection(number).ErrorBar(1, 1, -4114, error_range_array, error_range_array)
+                chart.api[1].SeriesCollection(number).ErrorBars.EndStyle = 1
+                chart.api[1].SeriesCollection(number).ErrorBars.Border.ColorIndex = res.source.FColor
+                first_energy = last_energy + 1
+
+            summary_range = iteration_sheet.range((start_row - 3, column), (start_row - 1, column + 1))
+            summary_range[0, 0].value = np.mean(efficiencies)
+            summary_range[1, 0].value = np.std(efficiencies)
+            summary_range[2, 0].value = f'Iteration {iteration}:'
+            summary_range[2, 1].value = f'{int((end_time - start_time).total_seconds())}'
+            summary_range[0, 1].value = f'{np.abs(np.mean(efficiencies) - 1.0)*np.std(efficiencies)}'
+
+            deviations_range = iteration_sheet.range((9, 15), (11, 17))
+            one_sigma_ratio = one_sigma / valid_measurements
+            two_sigma_ratio = two_sigma / valid_measurements
+            deviations_range[0, 1].value = one_sigma_ratio
+            deviations_range[1, 1].value = two_sigma_ratio
+            if one_sigma_ratio < 0.32 and two_sigma_ratio < 0.05:
+                deviations_range[2, 0].value = 'Fully passes validation criteria'
+                deviations_range[2, :].api.Interior.ColorIndex = 4
+            elif one_sigma_ratio < 0.5 and two_sigma_ratio < 0.1:
+                deviations_range[2, 0].value = 'Approaching validation criteria'
+                deviations_range[2, :].api.Interior.ColorIndex = 6
             else:
-                chart.api[1].SeriesCollection().Add(f'{iteration_sheet.range((first_energy, column)).get_address(False, False)}:{iteration_sheet.range((last_energy,column)).get_address(False, False)}')
-                number = chart.api[1].SeriesCollection().count
-                chart.api[1].SeriesCollection(number).XValues = utilities.range_to_array(iteration_sheet.range((first_energy, 2), (last_energy, 2)), float)
-            chart.api[1].SeriesCollection(number).Name = res.source.type
-            chart.api[1].SeriesCollection(number).MarkerStyle = res.source.marker
-            chart.api[1].SeriesCollection(number).MarkerSize = 4
-            chart.api[1].SeriesCollection(number).Border.ColorIndex = res.source.FColor
-            chart.api[1].SeriesCollection(number).MarkerBackgroundColorIndex = res.source.BColor
-            chart.api[1].SeriesCollection(number).MarkerForegroundColorIndex = res.source.FColor
-            chart.api[1].SeriesCollection(number).ErrorBar(1, 1, -4114, error_range_array, error_range_array)
-            chart.api[1].SeriesCollection(number).ErrorBars.EndStyle = 1
-            chart.api[1].SeriesCollection(number).ErrorBars.Border.ColorIndex = res.source.FColor
-            first_energy = last_energy + 1
+                deviations_range[2, 0].value = 'Not validated'
+                deviations_range[2, :].api.Interior.ColorIndex = 3
 
-        summary_range = iteration_sheet.range((start_row - 3, column), (start_row - 1, column + 1))
-        summary_range[0, 0].value = np.mean(efficiencies)
-        summary_range[1, 0].value = np.std(efficiencies)
-        summary_range[2, 0].value = f'Iteration {iteration}:'
-        summary_range[2, 1].value = f'{int((end_time - start_time).total_seconds())}'
-        summary_range[0, 1].value = f'{np.abs(np.mean(efficiencies) - 1.0)*np.std(efficiencies)}'
+            last_row = iteration_sheet.range('A' + str(iteration_sheet.cells.last_cell.row)).end('up').row
 
-        deviations_range = iteration_sheet.range((9, 15), (11, 17))
-        one_sigma_ratio = one_sigma / valid_measurements
-        two_sigma_ratio = two_sigma / valid_measurements
-        deviations_range[0, 1].value = one_sigma_ratio
-        deviations_range[1, 1].value = two_sigma_ratio
-        if one_sigma_ratio < 0.32 and two_sigma_ratio < 0.05:
-            deviations_range[2, 0].value = 'Fully passes validation criteria'
-            deviations_range[2, :].api.Interior.ColorIndex = 4
-        elif one_sigma_ratio < 0.5 and two_sigma_ratio < 0.1:
-            deviations_range[2, 0].value = 'Approaching validation criteria'
-            deviations_range[2, :].api.Interior.ColorIndex = 6
-        else:
-            deviations_range[2, 0].value = 'Not validated'
-            deviations_range[2, :].api.Interior.ColorIndex = 3
-
-        last_row = iteration_sheet.range('A' + str(iteration_sheet.cells.last_cell.row)).end('up').row
-
-        key_range = iteration_sheet.range((end_row + 1, 1), (last_row, 1))
-        if iteration == 1:
-            previous = 2
-        else:
-            previous = column - 2
-        previous_range = iteration_sheet.range((end_row + 1, previous), (last_row, previous))
-        current_range = iteration_sheet.range((end_row + 1, column), (last_row, column))
-
-        for key, previous, current in zip(key_range, previous_range, current_range):
-            if key.value == 'PARAMETER':
-                current.value = 'PARAMETER'
-                continue
-            elif key.value.startswith('~serial') or key.value.startswith('~model'):
-                current.value = getattr(self.detector, key.value[1:], '')
-
-            elif key.value.startswith('~'):
-                current.value = getattr(self, key.value[1:], '')
-
-            elif key.value.startswith('#'):
-                current.value = ''
-
+            key_range = iteration_sheet.range((end_row + 1, 1), (last_row, 1))
+            if iteration == 1:
+                previous = 2
             else:
-                current.value = self.detector.dimensions[key.value]
+                previous = column - 2
+            previous_range = iteration_sheet.range((end_row + 1, previous), (last_row, previous))
+            current_range = iteration_sheet.range((end_row + 1, column), (last_row, column))
 
-            if previous.value != current.value:
-                current.api.Interior.ColorIndex = 4
+            for key, previous, current in zip(key_range, previous_range, current_range):
+                if key.value == 'PARAMETER':
+                    current.value = 'PARAMETER'
+                    continue
+                elif key.value.startswith('~serial') or key.value.startswith('~model'):
+                    current.value = getattr(self.detector, key.value[1:], '')
 
-        table = [['MCNPEffic', 'Error']]
-        for counter in sorted(completed):
-            table.append([float(completed[counter].eff), float(completed[counter].unc)])
+                elif key.value.startswith('~'):
+                    current.value = getattr(self, key.value[1:], '')
 
-        iteration_sheet.range(last_row + 5, column).value = table
+                elif key.value.startswith('#'):
+                    current.value = ''
+
+                else:
+                    current.value = self.detector.dimensions[key.value]
+
+                if previous.value != current.value:
+                    current.api.Interior.ColorIndex = 4
+
+            table = [['MCNPEffic', 'Error']]
+            for counter in sorted(completed):
+                table.append([float(completed[counter].eff), float(completed[counter].unc)])
+
+            iteration_sheet.range(last_row + 5, column).value = table
+        finally:
+            app_excel.screen_updating = True
+            app_excel.calculation = 'automatic'
+            app_excel.api.EnableEvents = True
 
 
 class Characterization(Experiment):
